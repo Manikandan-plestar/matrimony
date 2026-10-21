@@ -36,6 +36,26 @@ class ProfileService {
     );
   }
 
+  /// Partial update for specific section editing (Personal Details or Partner Preferences).
+  /// Only updates provided fields and preserves all other profile phases.
+  static Future<({bool success, String message, MatrimonyProfileModel? profile})>
+      updateProfilePartial(Map<String, dynamic> partialData) async {
+    final result = await ApiService.patch('/api/mat/profiles/me', body: partialData);
+    if (result['success'] != true) {
+      return (
+        success: false,
+        message: result['message'] as String? ?? 'Error updating profile section.',
+        profile: null
+      );
+    }
+    final p = result['profile'];
+    return (
+      success: true,
+      message: 'Section updated successfully.',
+      profile: p is Map<String, dynamic> ? profileFromApi(p) : null,
+    );
+  }
+
   /// Publish the user's profile (make it discoverable).
   static Future<bool> publishProfile() async {
     final result = await ApiService.patch('/api/mat/profiles/me/status',

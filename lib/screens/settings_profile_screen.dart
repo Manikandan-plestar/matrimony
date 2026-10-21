@@ -142,20 +142,20 @@ class SettingsProfileScreen extends StatelessWidget {
               _buildMenuItem(
                 icon: Icons.person_outline_rounded,
                 title: 'My Matrimony Profile',
-                subtitle: 'Preview how other matches view you',
+                subtitle: 'Preview profile organized across the 3 phases',
                 onTap: () => Navigator.pushNamed(context, '/my-profile'),
               ),
               _buildMenuItem(
                 icon: Icons.edit_note_rounded,
                 title: 'Edit Personal Details',
-                subtitle: 'Update education, career & location',
-                onTap: () => Navigator.pushNamed(context, '/my-profile'),
+                subtitle: 'Update identity, contact & photograph only',
+                onTap: () => Navigator.pushNamed(context, '/edit-personal-details'),
               ),
               _buildMenuItem(
                 icon: Icons.favorite_border_rounded,
-                title: 'Partner Preferences',
-                subtitle: 'Age, religion, location & education criteria',
-                onTap: () => Navigator.pushNamed(context, '/my-profile'),
+                title: 'Partner Preference',
+                subtitle: 'Age, location, education & lifestyle criteria',
+                onTap: () => Navigator.pushNamed(context, '/edit-partner-preferences'),
               ),
             ]),
 
@@ -173,8 +173,8 @@ class SettingsProfileScreen extends StatelessWidget {
               ),
               _buildMenuItem(
                 icon: Icons.swap_horiz_rounded,
-                title: 'Interests',
-                subtitle: '${interaction.sentInterests.length} Sent • ${interaction.receivedInterests.length} Received',
+                title: 'Interests & Connections',
+                subtitle: '${interaction.connectionCount} Connected • ${interaction.sentInterests.length} Sent • ${interaction.receivedInterests.length} Requests',
                 badgeText: interaction.pendingReceivedCount > 0
                     ? '${interaction.pendingReceivedCount} new'
                     : null,
@@ -285,9 +285,9 @@ class SettingsProfileScreen extends StatelessWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => PopScope(
+      builder: (_) => const PopScope(
         canPop: false,
-        child: const Center(
+        child: Center(
           child: CircularProgressIndicator(color: AppTheme.burgundy),
         ),
       ),

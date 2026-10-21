@@ -283,12 +283,19 @@ async function initDatabase() {
         profile_id_b        INT NOT NULL,
         interest_id         INT NOT NULL,
         compatibility_score INT DEFAULT 85,
+        status              VARCHAR(20) DEFAULT 'active',
         created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_match_interest (interest_id),
         INDEX idx_user_a (user_id_a),
-        INDEX idx_user_b (user_id_b)
+        INDEX idx_user_b (user_id_b),
+        INDEX idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Safe migration: ensure status column exists in mat_matches
+    try {
+      await conn.query(`ALTER TABLE mat_matches ADD COLUMN status VARCHAR(20) DEFAULT 'active'`);
+    } catch (_) {}
 
     console.log('[Database] All tables initialized/verified successfully.');
   } finally {
@@ -980,6 +987,104 @@ app.post('/api/mat/profiles', authenticateUser, async (req, res) => {
 });
 
 /**
+ * PATCH /api/mat/profiles/me
+ * Partial update for section-by-section editing (e.g. Personal Details or Partner Preference).
+ * Only provided allowlisted fields are updated. Existing fields are preserved without overwriting.
+ */
+app.patch('/api/mat/profiles/me', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const b = req.body || {};
+
+    const [existing] = await pool.query('SELECT * FROM mat_profiles WHERE user_id = ?', [userId]);
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Profile not found. Please create your profile first.' });
+    }
+
+    const fieldMap = {
+      createdFor: 'created_for',
+      fullName: 'full_name',
+      gender: 'gender',
+      dateOfBirth: 'date_of_birth',
+      age: 'age',
+      maritalStatus: 'marital_status',
+      height: 'height',
+      motherTongue: 'mother_tongue',
+      religion: 'religion',
+      community: 'community',
+      dietaryPreference: 'dietary_preference',
+      profilePhotoUrl: 'profile_photo_url',
+      countryCode: 'country_code',
+      phone: 'phone',
+      address: 'address',
+      highestEducation: 'highest_education',
+      occupation: 'occupation',
+      company: 'company',
+      annualIncome: 'annual_income',
+      country: 'country',
+      state: 'state',
+      city: 'city',
+      locality: 'locality',
+      familyType: 'family_type',
+      familyBackground: 'family_background',
+      familyValues: 'family_values',
+      prefAgeMin: 'pref_age_min',
+      prefAgeMax: 'pref_age_max',
+      prefMaritalStatus: 'pref_marital_status',
+      prefLocation: 'pref_location',
+      prefEducation: 'pref_education',
+      prefOccupation: 'pref_occupation',
+      prefIncome: 'pref_income',
+      partnerExpectations: 'partner_expectations',
+      bio: 'bio',
+    };
+
+    const updates = [];
+    const values = [];
+
+    for (const [key, col] of Object.entries(fieldMap)) {
+      if (b[key] !== undefined) {
+        let val = b[key];
+        if (typeof val === 'string') val = val.trim();
+        if (key === 'age' || key === 'prefAgeMin' || key === 'prefAgeMax') {
+          val = parseInt(val, 10);
+          if (isNaN(val)) continue;
+        }
+        updates.push(`${col} = ?`);
+        values.push(val);
+      }
+    }
+
+    if (updates.length > 0) {
+      values.push(existing[0].id, userId);
+      await pool.query(`UPDATE mat_profiles SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, values);
+
+      // Keep mat_users in sync if full_name or profile_photo_url changed
+      if (b.fullName !== undefined || b.profilePhotoUrl !== undefined) {
+        const userUpdates = [];
+        const userValues = [];
+        if (b.fullName !== undefined) {
+          userUpdates.push('full_name = ?');
+          userValues.push(String(b.fullName).trim());
+        }
+        if (b.profilePhotoUrl !== undefined) {
+          userUpdates.push('profile_photo_url = ?');
+          userValues.push(String(b.profilePhotoUrl).trim() || null);
+        }
+        userValues.push(userId);
+        await pool.query(`UPDATE mat_users SET ${userUpdates.join(', ')} WHERE id = ?`, userValues);
+      }
+    }
+
+    const [updated] = await pool.query('SELECT * FROM mat_profiles WHERE id = ?', [existing[0].id]);
+    return res.status(200).json({ success: true, profile: toOwnProfile(updated[0]) });
+  } catch (err) {
+    console.error('[Profile] PATCH me error:', err.message);
+    return res.status(500).json({ success: false, message: 'Error updating profile.' });
+  }
+});
+
+/**
  * PATCH /api/mat/profiles/me/status
  * Publish or unpublish the authenticated user's profile.
  * Body: { status: 'published' | 'draft' }
@@ -1328,7 +1433,8 @@ app.delete('/api/mat/saved/:profileId', authenticateUser, async (req, res) => {
 /**
  * POST /api/mat/profiles/:profileId/view
  * Record that the authenticated user viewed a profile.
- * Deduplicates: one record per viewer-profile-day. Increments total_views on repeats.
+ * Deduplication policy: at most 1 counted view per viewer per profile per day.
+ * Self-views are excluded from tracking.
  */
 app.post('/api/mat/profiles/:profileId/view', authenticateUser, async (req, res) => {
   try {
@@ -1336,24 +1442,44 @@ app.post('/api/mat/profiles/:profileId/view', authenticateUser, async (req, res)
     const profileId = parseInt(req.params.profileId, 10);
     if (isNaN(profileId)) return res.status(400).json({ success: false, message: 'Invalid profile ID.' });
 
-    // Don't count own views
+    // Validate target exists
     const [profRows] = await pool.query('SELECT user_id FROM mat_profiles WHERE id = ?', [profileId]);
-    if (profRows.length && profRows[0].user_id === userId) {
-      return res.status(200).json({ success: true, message: 'Own profile view not recorded.' });
+    if (!profRows.length) {
+      return res.status(404).json({ success: false, message: 'Profile not found.' });
+    }
+
+    // Exclude self-views
+    if (profRows[0].user_id === userId) {
+      return res.status(200).json({ success: true, message: 'Self-view not recorded.', deduplicated: true });
     }
 
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
+    // Check if viewer already viewed this profile today
+    const [existing] = await pool.query(
+      'SELECT id FROM mat_profile_views WHERE viewer_user_id = ? AND profile_id = ? AND view_date = ?',
+      [userId, profileId, today]
+    );
+
+    if (existing.length) {
+      // Touch last_viewed_at timestamp only (does not inflate unique views or counter)
+      await pool.query(
+        'UPDATE mat_profile_views SET last_viewed_at = NOW() WHERE id = ?',
+        [existing[0].id]
+      );
+      return res.status(200).json({ success: true, message: 'View already recorded today.', deduplicated: true });
+    }
+
+    // First view today
     await pool.query(`
       INSERT INTO mat_profile_views (profile_id, viewer_user_id, view_date, total_views)
       VALUES (?, ?, ?, 1)
-      ON DUPLICATE KEY UPDATE total_views = total_views + 1, last_viewed_at = NOW()
     `, [profileId, userId, today]);
 
-    // Increment the profile's more_info_clicks counter
+    // Increment profile's more_info_clicks counter
     await pool.query('UPDATE mat_profiles SET more_info_clicks = more_info_clicks + 1 WHERE id = ?', [profileId]);
 
-    return res.status(200).json({ success: true, message: 'View recorded.' });
+    return res.status(200).json({ success: true, message: 'View recorded.', deduplicated: false });
   } catch (err) {
     console.error('[Views] POST error:', err.message);
     return res.status(500).json({ success: false, message: 'Error recording view.' });
@@ -1362,7 +1488,7 @@ app.post('/api/mat/profiles/:profileId/view', authenticateUser, async (req, res)
 
 /**
  * GET /api/mat/visitors
- * Returns who viewed the authenticated user's profile.
+ * Returns who viewed the authenticated user's profile (private to owner).
  */
 app.get('/api/mat/visitors', authenticateUser, async (req, res) => {
   try {
@@ -1395,6 +1521,122 @@ app.get('/api/mat/visitors', authenticateUser, async (req, res) => {
   } catch (err) {
     console.error('[Visitors] GET error:', err.message);
     return res.status(500).json({ success: false, message: 'Error fetching visitors.' });
+  }
+});
+
+/**
+ * GET /api/mat/analytics/profile
+ * Analytics for the authenticated user's own profile:
+ * Total profile views, total distinct active saves, and daily, weekly, monthly breakdowns.
+ * Query: ?period=day|week|month
+ */
+app.get('/api/mat/analytics/profile', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const period = (req.query.period || 'day').toLowerCase();
+
+    // Find authenticated user's own profile
+    const [profRows] = await pool.query('SELECT id FROM mat_profiles WHERE user_id = ?', [userId]);
+    if (!profRows.length) {
+      return res.status(200).json({
+        success: true,
+        period,
+        analytics: {
+          totalViews: 0,
+          totalSaves: 0,
+          periodViews: 0,
+          periodSaves: 0,
+          daily: { views: 0, saves: 0 },
+          weekly: { views: 0, saves: 0 },
+          monthly: { views: 0, saves: 0 },
+        }
+      });
+    }
+
+    const profileId = profRows[0].id;
+
+    // 1. Total Views (sum of total_views from mat_profile_views)
+    const [totViewRows] = await pool.query(
+      'SELECT COALESCE(SUM(total_views), 0) AS cnt FROM mat_profile_views WHERE profile_id = ?',
+      [profileId]
+    );
+    const totalViews = parseInt(totViewRows[0].cnt || 0, 10);
+
+    // 2. Total Saves: distinct users who currently have the profile saved
+    const [totSaveRows] = await pool.query(
+      'SELECT COUNT(DISTINCT user_id) AS cnt FROM mat_saved_profiles WHERE saved_profile_id = ?',
+      [profileId]
+    );
+    const totalSaves = parseInt(totSaveRows[0].cnt || 0, 10);
+
+    // 3. Daily Stats: current calendar day
+    const [dayViewRows] = await pool.query(
+      'SELECT COALESCE(SUM(total_views), 0) AS cnt FROM mat_profile_views WHERE profile_id = ? AND view_date = CURDATE()',
+      [profileId]
+    );
+    const [daySaveRows] = await pool.query(
+      'SELECT COUNT(DISTINCT user_id) AS cnt FROM mat_saved_profiles WHERE saved_profile_id = ? AND DATE(created_at) = CURDATE()',
+      [profileId]
+    );
+    const dailyStats = {
+      views: parseInt(dayViewRows[0].cnt || 0, 10),
+      saves: parseInt(daySaveRows[0].cnt || 0, 10),
+    };
+
+    // 4. Weekly Stats: last 7 days
+    const [weekViewRows] = await pool.query(
+      'SELECT COALESCE(SUM(total_views), 0) AS cnt FROM mat_profile_views WHERE profile_id = ? AND view_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)',
+      [profileId]
+    );
+    const [weekSaveRows] = await pool.query(
+      'SELECT COUNT(DISTINCT user_id) AS cnt FROM mat_saved_profiles WHERE saved_profile_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)',
+      [profileId]
+    );
+    const weeklyStats = {
+      views: parseInt(weekViewRows[0].cnt || 0, 10),
+      saves: parseInt(weekSaveRows[0].cnt || 0, 10),
+    };
+
+    // 5. Monthly Stats: calendar month (from 1st of current month)
+    const [monthViewRows] = await pool.query(
+      "SELECT COALESCE(SUM(total_views), 0) AS cnt FROM mat_profile_views WHERE profile_id = ? AND view_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')",
+      [profileId]
+    );
+    const [monthSaveRows] = await pool.query(
+      "SELECT COUNT(DISTINCT user_id) AS cnt FROM mat_saved_profiles WHERE saved_profile_id = ? AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')",
+      [profileId]
+    );
+    const monthlyStats = {
+      views: parseInt(monthViewRows[0].cnt || 0, 10),
+      saves: parseInt(monthSaveRows[0].cnt || 0, 10),
+    };
+
+    let periodViews = dailyStats.views;
+    let periodSaves = dailyStats.saves;
+    if (period === 'week') {
+      periodViews = weeklyStats.views;
+      periodSaves = weeklyStats.saves;
+    } else if (period === 'month') {
+      periodViews = monthlyStats.views;
+      periodSaves = monthlyStats.saves;
+    }
+
+    return res.status(200).json({
+      success: true,
+      period,
+      analytics: {
+        totalViews,
+        totalSaves,
+        periodViews,
+        periodSaves,
+        daily: dailyStats,
+        weekly: weeklyStats,
+        monthly: monthlyStats,
+      }
+    });
+  } catch (err) {
+    console.error('[Analytics] GET error:', err.message);
+    return res.status(500).json({ success: false, message: 'Error fetching analytics.' });
   }
 });
 
@@ -1523,6 +1765,7 @@ app.get('/api/mat/interests', authenticateUser, async (req, res) => {
 
     let query, params;
     if (type === 'received') {
+      // Incoming requests for user — only pending requests appear in active Request tab
       query = `
         SELECT i.*, p.id AS prof_id, p.full_name, p.profile_photo_url, p.age,
                p.mother_tongue, p.highest_education, p.occupation, p.city,
@@ -1530,11 +1773,12 @@ app.get('/api/mat/interests', authenticateUser, async (req, res) => {
                p.gender, p.bio, p.profile_code
         FROM mat_interests i
         INNER JOIN mat_profiles p ON p.id = i.sender_profile_id
-        WHERE i.receiver_user_id = ?
+        WHERE i.receiver_user_id = ? AND i.status = 'pending'
         ORDER BY i.created_at DESC
       `;
       params = [userId];
     } else {
+      // Sent requests by user — active requests only; withdrawn & removed are omitted
       query = `
         SELECT i.*, p.id AS prof_id, p.full_name, p.profile_photo_url, p.age,
                p.mother_tongue, p.highest_education, p.occupation, p.city,
@@ -1542,7 +1786,7 @@ app.get('/api/mat/interests', authenticateUser, async (req, res) => {
                p.gender, p.bio, p.profile_code
         FROM mat_interests i
         INNER JOIN mat_profiles p ON p.id = i.receiver_profile_id
-        WHERE i.sender_user_id = ?
+        WHERE i.sender_user_id = ? AND i.status NOT IN ('withdrawn', 'removed')
         ORDER BY i.created_at DESC
       `;
       params = [userId];
@@ -1584,8 +1828,8 @@ app.get('/api/mat/interests', authenticateUser, async (req, res) => {
 
 /**
  * PATCH /api/mat/interests/:interestId
- * Respond to or withdraw an interest request.
- * Body: { action: 'accept' | 'reject' | 'withdraw' }
+ * Respond to, withdraw, or remove an interest relationship.
+ * Body: { action: 'accept' | 'reject' | 'withdraw' | 'remove' }
  */
 app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) => {
   const conn = await pool.getConnection();
@@ -1594,8 +1838,8 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
     const interestId = parseInt(req.params.interestId, 10);
     const action = req.body.action;
 
-    if (!['accept', 'reject', 'withdraw'].includes(action)) {
-      return res.status(400).json({ success: false, message: 'action must be accept, reject, or withdraw.' });
+    if (!['accept', 'reject', 'withdraw', 'remove'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'action must be accept, reject, withdraw, or remove.' });
     }
     if (isNaN(interestId)) return res.status(400).json({ success: false, message: 'Invalid interest ID.' });
 
@@ -1604,23 +1848,56 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
 
     const interest = rows[0];
 
-    // Authorization: accept/reject = receiver, withdraw = sender
-    if (action === 'withdraw' && interest.sender_user_id !== userId) {
-      return res.status(403).json({ success: false, message: 'Only the sender can withdraw an interest.' });
-    }
-    if ((action === 'accept' || action === 'reject') && interest.receiver_user_id !== userId) {
-      return res.status(403).json({ success: false, message: 'Only the recipient can accept or reject an interest.' });
-    }
-
-    // State transition validation
-    if (interest.status !== 'pending') {
-      return res.status(409).json({
-        success: false,
-        message: `Cannot ${action} an interest with status: ${interest.status}.`
-      });
+    // Authorization checks
+    if (action === 'withdraw') {
+      if (interest.sender_user_id !== userId) {
+        return res.status(403).json({ success: false, message: 'Only the sender can withdraw an interest.' });
+      }
+      if (interest.status !== 'pending') {
+        return res.status(409).json({ success: false, message: `Cannot withdraw an interest with status: ${interest.status}.` });
+      }
+    } else if (action === 'accept' || action === 'reject') {
+      if (interest.receiver_user_id !== userId) {
+        return res.status(403).json({ success: false, message: 'Only the recipient can accept or reject an interest.' });
+      }
+      if (interest.status !== 'pending') {
+        return res.status(409).json({ success: false, message: `Cannot ${action} an interest with status: ${interest.status}.` });
+      }
+    } else if (action === 'remove') {
+      // Either participant in an accepted connection can remove it
+      if (interest.sender_user_id !== userId && interest.receiver_user_id !== userId) {
+        return res.status(403).json({ success: false, message: 'You are not a participant in this connection.' });
+      }
+      if (interest.status !== 'accepted') {
+        return res.status(409).json({ success: false, message: `Only accepted connections can be removed (current status: ${interest.status}).` });
+      }
     }
 
     await conn.beginTransaction();
+
+    if (action === 'remove') {
+      // Transition to 'removed' and deactivate match record
+      await conn.query(`
+        UPDATE mat_interests
+        SET status = 'removed', updated_at = NOW()
+        WHERE id = ?
+      `, [interestId]);
+
+      await conn.query(`
+        UPDATE mat_matches
+        SET status = 'removed'
+        WHERE interest_id = ?
+      `, [interestId]);
+
+      await conn.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Connection removed successfully.',
+        interestId,
+        status: 'removed',
+      });
+    }
 
     const newStatus = action === 'accept' ? 'accepted' : action === 'reject' ? 'rejected' : 'withdrawn';
     const withdrawnAt = action === 'withdraw' ? new Date() : null;
@@ -1647,8 +1924,8 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
       // Create match record
       await conn.query(`
         INSERT IGNORE INTO mat_matches
-          (user_id_a, user_id_b, profile_id_a, profile_id_b, interest_id, compatibility_score)
-        VALUES (?, ?, ?, ?, ?, ?)
+          (user_id_a, user_id_b, profile_id_a, profile_id_b, interest_id, compatibility_score, status)
+        VALUES (?, ?, ?, ?, ?, ?, 'active')
       `, [
         interest.sender_user_id, interest.receiver_user_id,
         interest.sender_profile_id, interest.receiver_profile_id,
@@ -1664,25 +1941,6 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
         interest.sender_user_id,
         '🎉 Interest Accepted!',
         `${receiverName} has accepted your interest! You can now view their full profile.`,
-        interest.receiver_profile_id,
-        interestId
-      ]);
-    }
-
-    // If rejected: optionally notify sender
-    if (action === 'reject') {
-      const [recProfRows] = await conn.query(
-        'SELECT full_name FROM mat_profiles WHERE id = ?', [interest.receiver_profile_id]
-      );
-      const receiverName = recProfRows[0]?.full_name || 'The recipient';
-      await conn.query(`
-        INSERT INTO mat_notifications
-          (user_id, type, title, message, related_profile_id, related_interest_id)
-        VALUES (?, 'interest_rejected', ?, ?, ?, ?)
-      `, [
-        interest.sender_user_id,
-        'Interest Update',
-        `${receiverName} has declined your interest request.`,
         interest.receiver_profile_id,
         interestId
       ]);
@@ -1705,13 +1963,60 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
   }
 });
 
+/**
+ * DELETE /api/mat/connections/:id
+ * Remove a connection by match ID or interest ID.
+ */
+app.delete('/api/mat/connections/:id', authenticateUser, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const userId = req.user.id;
+    const targetId = parseInt(req.params.id, 10);
+    if (isNaN(targetId)) return res.status(400).json({ success: false, message: 'Invalid connection ID.' });
+
+    // Find match record by id or interest_id
+    const [matches] = await conn.query(
+      'SELECT * FROM mat_matches WHERE (id = ? OR interest_id = ?) AND (user_id_a = ? OR user_id_b = ?)',
+      [targetId, targetId, userId, userId]
+    );
+
+    let interestId;
+    if (matches.length) {
+      interestId = matches[0].interest_id;
+    } else {
+      // Find directly in mat_interests
+      const [interests] = await conn.query(
+        'SELECT id FROM mat_interests WHERE id = ? AND (sender_user_id = ? OR receiver_user_id = ?) AND status = "accepted"',
+        [targetId, userId, userId]
+      );
+      if (!interests.length) {
+        return res.status(404).json({ success: false, message: 'Active connection not found.' });
+      }
+      interestId = interests[0].id;
+    }
+
+    await conn.beginTransaction();
+    await conn.query("UPDATE mat_interests SET status = 'removed', updated_at = NOW() WHERE id = ?", [interestId]);
+    await conn.query("UPDATE mat_matches SET status = 'removed' WHERE interest_id = ?", [interestId]);
+    await conn.commit();
+
+    return res.status(200).json({ success: true, message: 'Connection removed successfully.', status: 'removed' });
+  } catch (err) {
+    await conn.rollback();
+    console.error('[Connection] DELETE error:', err.message);
+    return res.status(500).json({ success: false, message: 'Error removing connection.' });
+  } finally {
+    conn.release();
+  }
+});
+
 // ============================================================
-// 18. MATCHES
+// 18. MATCHES (CONNECTIONS)
 // ============================================================
 
 /**
  * GET /api/mat/matches
- * Returns mutual match profiles (accepted interests).
+ * Returns mutual match / connection profiles (active accepted interests).
  */
 app.get('/api/mat/matches', authenticateUser, async (req, res) => {
   try {
@@ -1735,7 +2040,7 @@ app.get('/api/mat/matches', authenticateUser, async (req, res) => {
       FROM mat_matches m
       INNER JOIN mat_profiles pa ON pa.id = m.profile_id_a
       INNER JOIN mat_profiles pb ON pb.id = m.profile_id_b
-      WHERE m.user_id_a = ? OR m.user_id_b = ?
+      WHERE (m.user_id_a = ? OR m.user_id_b = ?) AND (m.status IS NULL OR m.status = 'active')
       ORDER BY m.created_at DESC
     `, [userId, userId]);
 
@@ -1744,6 +2049,7 @@ app.get('/api/mat/matches', authenticateUser, async (req, res) => {
       const isA = r.user_id_a === userId;
       return {
         id: r.id,
+        interestId: r.interest_id,
         compatibilityScore: r.compatibility_score,
         matchedDate: r.created_at,
         matchingFactors: ['Mutual Interest Accepted'],
@@ -1763,7 +2069,7 @@ app.get('/api/mat/matches', authenticateUser, async (req, res) => {
           compatibility_score: isA ? r.comp_b : r.comp_a,
           gender: isA ? r.gender_b : r.gender_a,
           bio: isA ? r.bio_b : r.bio_a,
-        })
+        }, { isSaved: false, isInterestSent: true, interestStatus: 'accepted' })
       };
     });
 

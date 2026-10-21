@@ -31,6 +31,11 @@ class _ProfileDetailsModalState extends State<ProfileDetailsModal> {
   void initState() {
     super.initState();
     _checkAndFetchFullProfile();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.profile.id.isNotEmpty) {
+        context.read<InteractionProvider>().recordProfileView(widget.profile.id);
+      }
+    });
   }
 
   Future<void> _checkAndFetchFullProfile() async {

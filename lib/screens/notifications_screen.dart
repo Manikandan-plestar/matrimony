@@ -1,9 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../models/notification_model.dart';
+import '../providers/interaction_provider.dart';
 import '../providers/notification_provider.dart';
 import '../widgets/modals/profile_details_modal.dart';
+import 'interests_screen.dart';
 
 /// Notifications Inbox Screen
 class NotificationsScreen extends StatelessWidget {
@@ -96,14 +98,22 @@ class NotificationsScreen extends StatelessWidget {
                   child: InkWell(
                     onTap: () {
                       notifProvider.markAsRead(item.id);
-                      if (item.relatedProfile != null) {
+                      if (item.type == NotificationType.interestReceived) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const InterestsScreen(initialTabIndex: 2),
+                          ),
+                        );
+                      } else if (item.relatedProfile != null) {
                         showModalBottomSheet(
                           context: context,
                           isScrollControlled: true,
                           backgroundColor: Colors.transparent,
                           builder: (_) => ProfileDetailsModal(
                             profile: item.relatedProfile!,
-                            onToggleSave: () {},
+                            onToggleSave: () {
+                              context.read<InteractionProvider>().toggleSaveProfile(item.relatedProfile!);
+                            },
                             onExpressInterest: () {},
                           ),
                         );

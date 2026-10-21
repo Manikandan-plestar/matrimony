@@ -58,6 +58,8 @@ class InteractionService {
           status = InterestStatus.declined;
         case 'withdrawn':
           status = InterestStatus.withdrawn;
+        case 'removed':
+          status = InterestStatus.removed;
         default:
           status = InterestStatus.pending;
       }
@@ -111,7 +113,17 @@ class InteractionService {
       String interestId) =>
       respondToInterest(interestId, 'reject');
 
-  // ─── Matches ───────────────────────────────────────────────────────────────
+  /// Remove an accepted connection (by connection ID or interest ID)
+  static Future<({bool success, String message})> removeConnection(
+      String connectionId) async {
+    final result = await ApiService.delete('/api/mat/connections/$connectionId');
+    return (
+      success: result['success'] == true,
+      message: result['message'] as String? ?? 'Error removing connection.',
+    );
+  }
+
+  // ─── Matches / Connections ─────────────────────────────────────────────────
 
   static Future<List<MatchItem>> fetchMatches() async {
     final result = await ApiService.get('/api/mat/matches');
@@ -125,6 +137,7 @@ class InteractionService {
           : _emptyProfile();
       return MatchItem(
         id: '${d['id']}',
+        interestId: d['interestId'] != null ? '${d['interestId']}' : null,
         profile: profile,
         compatibilityScore: (d['compatibilityScore'] as num?)?.toInt() ?? 85,
         matchingFactors:
@@ -135,7 +148,7 @@ class InteractionService {
     }).toList();
   }
 
-  // ─── Visitors ──────────────────────────────────────────────────────────────
+  // ─── Visitors & Analytics ──────────────────────────────────────────────────
 
   static Future<List<VisitorItem>> fetchVisitors() async {
     final result = await ApiService.get('/api/mat/visitors');
@@ -154,6 +167,20 @@ class InteractionService {
         visitCount: (d['visitCount'] as num?)?.toInt() ?? 1,
       );
     }).toList();
+  }
+
+  /// Record a profile view when opening a candidate's More Info details
+  static Future<bool> recordProfileView(String profileId) async {
+    if (profileId.isEmpty) return false;
+    final result = await ApiService.post('/api/mat/profiles/$profileId/view');
+    return result['success'] == true;
+  }
+
+  /// Fetch own profile visitor & bookmark analytics for day/week/month
+  static Future<ProfileAnalyticsModel> fetchProfileAnalytics(String period) async {
+    final result = await ApiService.get('/api/mat/analytics/profile', queryParams: {'period': period});
+    if (result['success'] != true) return ProfileAnalyticsModel.empty();
+    return ProfileAnalyticsModel.fromJson(result, period);
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────

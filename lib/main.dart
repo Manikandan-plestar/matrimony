@@ -20,6 +20,8 @@ import 'screens/publish_wizard_screen.dart';
 import 'screens/saved_profiles_screen.dart';
 import 'screens/interests_screen.dart';
 import 'screens/matches_screen.dart';
+import 'screens/edit_personal_details_screen.dart';
+import 'screens/edit_partner_preferences_screen.dart';
 import 'screens/visitors_screen.dart';
 import 'screens/static_settings_screen.dart';
 
@@ -78,6 +80,10 @@ class MatrimonyApp extends StatelessWidget {
               return MaterialPageRoute(builder: (_) => const SettingsProfileScreen());
             case '/my-profile':
               return MaterialPageRoute(builder: (_) => const MyProfileScreen());
+            case '/edit-personal-details':
+              return MaterialPageRoute(builder: (_) => const EditPersonalDetailsScreen());
+            case '/edit-partner-preferences':
+              return MaterialPageRoute(builder: (_) => const EditPartnerPreferencesScreen());
             case '/publish-wizard':
               return MaterialPageRoute(builder: (_) => const PublishWizardScreen());
             case '/saved-profiles':

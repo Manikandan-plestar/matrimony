@@ -21,7 +21,7 @@ class ProfileProvider extends ChangeNotifier {
   DateTime? draftDateOfBirth;
   int draftAge = 28;
   String draftMaritalStatus = 'Never Married';
-  String draftHeight = '5\' 10\" (178 cm)';
+  String draftHeight = '5\' 10" (178 cm)';
   String draftMotherTongue = 'English';
   String draftReligion = 'Hindu';
   String draftCommunity = '';
@@ -99,7 +99,7 @@ class ProfileProvider extends ChangeNotifier {
     draftDateOfBirth = null;
     draftAge = 28;
     draftMaritalStatus = 'Never Married';
-    draftHeight = '5\' 10\" (178 cm)';
+    draftHeight = '5\' 10" (178 cm)';
     draftMotherTongue = 'English';
     draftReligion = 'Hindu';
     draftCommunity = '';
@@ -174,9 +174,33 @@ class ProfileProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isUpdatingSection = false;
+  bool get isUpdatingSection => _isUpdatingSection;
+
   void updateMyProfile(MatrimonyProfileModel updated) {
     _myProfile = updated;
     notifyListeners();
+  }
+
+  /// Partial update for section editing (e.g. Personal Details or Partner Preference).
+  /// Preserves all untouched phases without overwriting.
+  Future<({bool success, String message})> updateProfileSection(Map<String, dynamic> data) async {
+    _isUpdatingSection = true;
+    notifyListeners();
+    try {
+      final res = await ProfileService.updateProfilePartial(data);
+      if (res.success && res.profile != null) {
+        _myProfile = res.profile;
+        notifyListeners();
+        return (success: true, message: res.message);
+      }
+      return (success: false, message: res.message);
+    } catch (e) {
+      return (success: false, message: 'Failed to update section: $e');
+    } finally {
+      _isUpdatingSection = false;
+      notifyListeners();
+    }
   }
 
   /// Publishes the wizard draft to the real backend and returns the saved profile.
