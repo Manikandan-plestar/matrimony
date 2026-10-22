@@ -1,11 +1,11 @@
 {
-    "name": "Spouse Spotter",
-    "short_name": "Spouse Spotter",
+    "name": "Matrimonyer",
+    "short_name": "Matrimonyer",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Spouse Spotter — Find Your Forever Match.",
+    "description": "Matrimonyer — Find Your Forever Match.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

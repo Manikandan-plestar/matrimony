@@ -1,4 +1,4 @@
-# Spouse Spotter — Matrimony Application
+# Matrimonyer — Matrimony Application
 
 A modern, elegant Matrimonial Application built with **Flutter**, **Material 3**, and **Provider** state management, featuring an **image-first discovery deck**, **custom swipe animations**, and a **3-phase profile publishing wizard**.
 

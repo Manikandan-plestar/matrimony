@@ -4,6 +4,6 @@ import 'package:matrimony_app/main.dart';
 void main() {
   testWidgets('MatrimonyApp smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const MatrimonyApp());
-    expect(find.text('Spouse Spotter'), findsOneWidget);
+    expect(find.text('Matrimonyer'), findsOneWidget);
   });
 }

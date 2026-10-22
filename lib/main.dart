@@ -66,7 +66,7 @@ class MatrimonyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
       ],
       child: MaterialApp(
-        title: 'Spouse Spotter',
+        title: 'Matrimonyer',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         // SplashRouter handles session restore before showing any screen
@@ -212,7 +212,7 @@ class _SplashRouterState extends State<_SplashRouter> {
             ),
             const SizedBox(height: 20),
             const Text(
-              'Spouse Spotter',
+              'Matrimonyer',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w900,

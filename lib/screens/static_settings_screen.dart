@@ -128,7 +128,7 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
                   children: [
                     Icon(Icons.email_outlined, color: AppTheme.rose, size: 18),
                     SizedBox(width: 8),
-                    Text('support@spousespotter.com', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text('support@matrimonyer.com', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   ],
                 ),
                 SizedBox(height: 8),
@@ -149,7 +149,7 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
 
   Widget _buildAboutView() {
     return Scaffold(
-      appBar: AppBar(title: const Text('About Spouse Spotter')),
+      appBar: AppBar(title: const Text('About Matrimonyer')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -185,7 +185,7 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Spouse Spotter Matrimony',
+              'Matrimonyer',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.burgundy),
             ),
             const SizedBox(height: 6),

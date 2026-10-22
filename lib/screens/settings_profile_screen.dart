@@ -224,7 +224,7 @@ class SettingsProfileScreen extends StatelessWidget {
               ),
               _buildMenuItem(
                 icon: Icons.info_outline_rounded,
-                title: 'About Spouse Spotter App',
+                title: 'About Matrimonyer App',
                 onTap: () => Navigator.pushNamed(context, '/about-app'),
               ),
             ]),
@@ -266,7 +266,7 @@ class SettingsProfileScreen extends StatelessWidget {
           ],
         ),
         content: const Text(
-          'Are you sure you want to log out of Spouse Spotter? You will need to sign in again to access your account.',
+          'Are you sure you want to log out of Matrimonyer? You will need to sign in again to access your account.',
         ),
         actions: [
           TextButton(

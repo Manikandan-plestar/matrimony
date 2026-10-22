@@ -63,8 +63,8 @@ class SubscriptionService {
           'paymentId': paymentId,
           'gateway': gateway,
           'purchaseToken': purchaseToken,
-          'packageName': 'com.spousespotter.matrimony',
-          'productId': 'spousespotter_unlimited_swipes_499',
+          'packageName': 'matrimonyer.matrimony.com',
+          'productId': 'matrimonyer_unlimited_swipes_499',
         },
       );
 

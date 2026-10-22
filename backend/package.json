@@ -1,7 +1,7 @@
 {
   "name": "matrimony-backend",
   "version": "1.0.0",
-  "description": "Node.js Express backend with MySQL for Spouse Spotter Matrimony App",
+  "description": "Node.js Express backend with MySQL for Matrimonyer App",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

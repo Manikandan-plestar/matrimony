@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * Spouse Spotter — Matrimony App Backend
+ * Matrimonyer — Matrimony App Backend
  * Node.js + Express + MySQL
  *
  * Separate database (matrimony_db) and JWT secret from Simple ADVT.
@@ -44,7 +44,7 @@ const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
 const SMTP_SECURE = process.env.SMTP_SECURE !== 'false';
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
-const FROM_EMAIL = process.env.FROM_EMAIL || `"Spouse Spotter" <${SMTP_USER || 'no-reply@spousespotter.com'}>`;
+const FROM_EMAIL = process.env.FROM_EMAIL || `"Matrimonyer" <${SMTP_USER || 'no-reply@matrimonyer.com'}>`;
 
 // NOTE: This JWT_SECRET is intentionally separate from Simple ADVT's secret.
 const JWT_SECRET = process.env.JWT_SECRET || 'matrimony_dev_jwt_secret_CHANGE_IN_PRODUCTION_2026';
@@ -491,14 +491,14 @@ function buildOtpEmailHtml(otp, expiryMin) {
     .footer{background:#fdf0f3;padding:12px;text-align:center;font-size:11px;color:#94a3b8;border-top:1px solid #e8d0d8}
   </style></head><body>
   <div class="wrap">
-    <div class="hdr"><h1>💍 Spouse Spotter</h1><p>Email Verification Code</p></div>
+    <div class="hdr"><h1>💍 Matrimonyer</h1><p>Email Verification Code</p></div>
     <div class="body">
       <p style="font-size:15px;margin-bottom:14px">Your 6-digit verification code:</p>
       <div class="otp">${otp}</div>
       <p class="exp">⏰ Expires in ${expiryMin} minutes</p>
       <div class="note">Never share this code. If you did not request this, please ignore this email.</div>
     </div>
-    <div class="footer">© ${new Date().getFullYear()} Spouse Spotter. All rights reserved.</div>
+    <div class="footer">© ${new Date().getFullYear()} Matrimonyer. All rights reserved.</div>
   </div></body></html>`;
 }
 
@@ -509,8 +509,8 @@ async function sendOtpEmail(email, otp) {
   const mailOpts = {
     from: FROM_EMAIL,
     to: email,
-    subject: `${otp} — Your Spouse Spotter verification code`,
-    text: `Your Spouse Spotter OTP is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Never share it.`,
+    subject: `${otp} — Your Matrimonyer verification code`,
+    text: `Your Matrimonyer OTP is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Never share it.`,
     html: buildOtpEmailHtml(otp, OTP_EXPIRY_MINUTES)
   };
   const info = await transporter.sendMail(mailOpts);
@@ -691,7 +691,7 @@ function authenticateUser(req, res, next) {
 // 9. HEALTH CHECK
 // ============================================================
 app.get('/api/mat/health', (req, res) => {
-  res.json({ success: true, service: 'Spouse Spotter API', version: '1.0.0', timestamp: new Date().toISOString() });
+  res.json({ success: true, service: 'Matrimonyer API', version: '1.0.0', timestamp: new Date().toISOString() });
 });
 
 // ============================================================
@@ -2574,8 +2574,8 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
       paymentId,
       gateway = 'google_pay', // 'google_pay', 'google_play', 'verified_in_app'
       purchaseToken,
-      packageName = 'com.spousespotter.matrimony',
-      productId = 'spousespotter_unlimited_swipes_499'
+      packageName = 'matrimonyer.matrimony.com',
+      productId = 'matrimonyer_unlimited_swipes_499'
     } = req.body;
 
     if (!paymentId || typeof paymentId !== 'string' || paymentId.trim().length === 0) {
@@ -2669,7 +2669,7 @@ async function startServer() {
 
   const banner = `
   ╔══════════════════════════════════════════════════════╗
-  ║      💍 Spouse Spotter — Matrimony API Server        ║
+  ║          💍 Matrimonyer — API Server                 ║
   ╚══════════════════════════════════════════════════════╝`;
 
   if (fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {

@@ -159,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Spouse Spotter',
+                      'Matrimonyer',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w900,

@@ -72,7 +72,7 @@ class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Spouse Spotter',
+                'Matrimonyer',
                 style: TextStyle(
                   color: AppTheme.burgundy,
                   fontSize: 18,
