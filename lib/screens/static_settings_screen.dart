@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../config/theme.dart';
 
 enum SettingsScreenType {
@@ -128,7 +128,7 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
                   children: [
                     Icon(Icons.email_outlined, color: AppTheme.rose, size: 18),
                     SizedBox(width: 8),
-                    Text('support@vowsandsouls.com', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text('support@spousespotter.com', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   ],
                 ),
                 SizedBox(height: 8),
@@ -149,25 +149,43 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
 
   Widget _buildAboutView() {
     return Scaffold(
-      appBar: AppBar(title: const Text('About Vows & Souls')),
+      appBar: AppBar(title: const Text('About Spouse Spotter')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
             const Spacer(),
             Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppTheme.burgundy, AppTheme.rose],
-                ),
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.white,
                 shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.rose, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.burgundy.withValues(alpha: 0.12),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 48),
+              child: ClipOval(
+                child: Padding(
+                  padding: const EdgeInsets.all(10.0),
+                  child: Image.asset(
+                    'assets/images/spouse_spotter_icon.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Icon(Icons.favorite_rounded, color: AppTheme.burgundy, size: 48),
+                    ),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             const Text(
-              'Vows & Souls Matrimony',
+              'Spouse Spotter Matrimony',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.burgundy),
             ),
             const SizedBox(height: 6),

@@ -5,7 +5,9 @@ import '../../models/matrimony_profile_model.dart';
 import '../../providers/discovery_provider.dart';
 import '../../providers/interaction_provider.dart';
 import '../../providers/search_filter_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../widgets/cards/matrimony_tinder_deck.dart';
+import '../../widgets/modals/daily_limit_modal.dart';
 import '../../widgets/modals/profile_details_modal.dart';
 
 /// Bride Discovery Feed Screen
@@ -40,6 +42,7 @@ class BrideFeedScreen extends StatelessWidget {
     final discovery = context.watch<DiscoveryProvider>();
     final filter = context.watch<SearchFilterProvider>();
     final interaction = context.watch<InteractionProvider>();
+    final subscription = context.watch<SubscriptionProvider>();
 
     // Apply active filters on bride profiles
     final filteredBrides = filter.filterProfiles(discovery.brideProfiles);
@@ -81,10 +84,109 @@ class BrideFeedScreen extends StatelessWidget {
               ),
             ),
 
+          // Daily Swipe Quota / Subscription Pill Indicator
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 2),
+            child: subscription.isUnlimited
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)]),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.bolt_rounded, size: 16, color: Color(0xFFB45309)),
+                        SizedBox(width: 6),
+                        Text(
+                          'Unlimited Swipes Active ✨',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
+                        ),
+                      ],
+                    ),
+                  )
+                : Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: subscription.hasReachedLimit
+                            ? AppTheme.error.withValues(alpha: 0.5)
+                            : AppTheme.cardBorder,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          subscription.hasReachedLimit ? Icons.lock_clock_rounded : Icons.swipe_rounded,
+                          size: 15,
+                          color: subscription.hasReachedLimit ? AppTheme.error : AppTheme.burgundy,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          subscription.hasReachedLimit
+                              ? '0 swipes remaining today'
+                              : '${subscription.swipesRemainingToday} swipes remaining today',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: subscription.hasReachedLimit ? AppTheme.error : AppTheme.textPrimary,
+                          ),
+                        ),
+                        if (subscription.hasReachedLimit) ...[
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: () => DailyLimitModal.show(context),
+                            child: const Text(
+                              'Upgrade',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.burgundy,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+          ),
+
           // Main Swipe Deck
           Expanded(
             child: MatrimonyTinderDeck(
               profiles: filteredBrides,
+              onSwipe: (p, action) async {
+                final subProvider = context.read<SubscriptionProvider>();
+                if (!subProvider.canAttemptSwipe()) {
+                  DailyLimitModal.show(context);
+                  return false;
+                }
+                final res = await subProvider.processSwipe(
+                  profile: p,
+                  action: action,
+                  feedType: 'bride',
+                );
+                if (!res.allowed) {
+                  if (context.mounted && (res.limitReached || subProvider.hasReachedLimit)) {
+                    DailyLimitModal.show(context);
+                  }
+                  return false;
+                }
+                return true;
+              },
               onToggleSave: (p) {
                 interaction.toggleSaveProfile(p);
                 ScaffoldMessenger.of(context).showSnackBar(

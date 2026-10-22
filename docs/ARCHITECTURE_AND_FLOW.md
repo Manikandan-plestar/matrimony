@@ -1,10 +1,10 @@
-﻿# Vows & Souls Matrimony App — Complete Architecture & Flow Documentation
+# Spouse Spotter Matrimony App — Complete Architecture & Flow Documentation
 
 ---
 
 ## 1. Executive Summary & Design Direction
 
-**Vows & Souls** is a mobile matrimonial application built using **Flutter (Dart)** and **Material 3**, architected with an **image-first discovery paradigm**, **provider-based state management**, and an offline **mock data layer**.
+**Spouse Spotter** is a mobile matrimonial application built using **Flutter (Dart)** and **Material 3**, architected with an **image-first discovery paradigm**, **provider-based state management**, and an offline **mock data layer**.
 
 ### Core Philosophy
 - **Image-First Discovery:** Discovery cards prioritize photography, age, verification status, and essential bio points, avoiding information overload on the initial swipe deck.
@@ -272,7 +272,7 @@ E:\Mani dev\Mat\
 #### `lib/widgets/common/custom_app_bar.dart`
 - **Purpose:** Header bar.
 - **Key Elements:**
-  - Brand identity: "Vows & Souls".
+  - Brand identity: "Spouse Spotter".
   - Filter button with dynamic active filter count badge.
   - Notification icon with unread badge counter.
   - User avatar with gold ring opening the Account Hub.

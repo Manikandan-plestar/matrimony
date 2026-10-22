@@ -1,5 +1,5 @@
 name: matrimony_app
-description: "A modern, elegant Matrimony Application with image-first discovery, swipe deck, and multi-phase publishing."
+description: "Spouse Spotter — A modern, elegant Matrimony Application with image-first discovery, swipe deck, and multi-phase publishing."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -26,3 +26,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/

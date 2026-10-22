@@ -32,16 +32,39 @@ class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(7),
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppTheme.burgundy, AppTheme.rose],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.rose.withValues(alpha: 0.3)),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.burgundy.withValues(alpha: 0.08),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 18),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.all(3.0),
+              child: Image.asset(
+                'assets/images/spouse_spotter_icon.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppTheme.burgundy, AppTheme.rose],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 18),
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 10),
           Column(
@@ -49,7 +72,7 @@ class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Vows & Souls',
+                'Spouse Spotter',
                 style: TextStyle(
                   color: AppTheme.burgundy,
                   fontSize: 18,

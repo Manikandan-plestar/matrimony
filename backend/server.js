@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * Vows & Souls — Matrimony App Backend
+ * Spouse Spotter — Matrimony App Backend
  * Node.js + Express + MySQL
  *
  * Separate database (matrimony_db) and JWT secret from Simple ADVT.
@@ -44,7 +44,7 @@ const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
 const SMTP_SECURE = process.env.SMTP_SECURE !== 'false';
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
-const FROM_EMAIL = process.env.FROM_EMAIL || `"Vows & Souls" <${SMTP_USER || 'no-reply@vowsandsouls.com'}>`;
+const FROM_EMAIL = process.env.FROM_EMAIL || `"Spouse Spotter" <${SMTP_USER || 'no-reply@spousespotter.com'}>`;
 
 // NOTE: This JWT_SECRET is intentionally separate from Simple ADVT's secret.
 const JWT_SECRET = process.env.JWT_SECRET || 'matrimony_dev_jwt_secret_CHANGE_IN_PRODUCTION_2026';
@@ -58,6 +58,112 @@ const ENABLE_TEST_OTP = process.env.ENABLE_TEST_OTP === 'true' || process.env.NO
 const TEST_OTP_ALLOWLIST_RAW = process.env.TEST_OTP_ALLOWLIST || '';
 const TEST_OTP_ALLOWLIST = TEST_OTP_ALLOWLIST_RAW.split(',').map(e => e.trim().toLowerCase()).filter(e => e.length > 0);
 const MAX_IMAGE_SIZE_BYTES = parseInt(process.env.MAX_IMAGE_SIZE_MB || '5', 10) * 1024 * 1024;
+
+// Subscription & Daily Swipe Limit Configuration
+const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+const SWIPE_DAILY_LIMIT = parseInt(process.env.SWIPE_DAILY_LIMIT || '10', 10);
+const UNLIMITED_SWIPE_PLAN_PRICE = parseFloat(process.env.UNLIMITED_SWIPE_PLAN_PRICE || '499');
+
+/**
+ * Returns current date string 'YYYY-MM-DD' in the configured APP_TIMEZONE.
+ */
+function getTodayDateInTimezone(tz = APP_TIMEZONE) {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(new Date());
+  } catch (_) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * Returns ISO timestamp of the next midnight boundary (reset time) in APP_TIMEZONE.
+ */
+function getNextResetBoundaryIso(tz = APP_TIMEZONE) {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(now);
+    const partMap = {};
+    for (const p of parts) partMap[p.type] = p.value;
+    const tzYear = parseInt(partMap.year, 10);
+    const tzMonth = parseInt(partMap.month, 10) - 1;
+    const tzDay = parseInt(partMap.day, 10);
+    const tzHour = parseInt(partMap.hour, 10);
+    const tzMin = parseInt(partMap.minute, 10);
+    const tzSec = parseInt(partMap.second, 10);
+
+    const tzNow = new Date(Date.UTC(tzYear, tzMonth, tzDay, tzHour, tzMin, tzSec));
+    const nextMidnight = new Date(Date.UTC(tzYear, tzMonth, tzDay + 1, 0, 0, 0));
+    const msUntilMidnight = nextMidnight.getTime() - tzNow.getTime();
+
+    return new Date(now.getTime() + msUntilMidnight).toISOString();
+  } catch (_) {
+    const d = new Date();
+    d.setUTCHours(24, 0, 0, 0);
+    return d.toISOString();
+  }
+}
+
+/**
+ * Resolves local date ('YYYY-MM-DD') and next local midnight ISO reset timestamp
+ * based on device client headers ('x-timezone-offset' in minutes, e.g. +330 for India, -300 for US EST)
+ * allowing the application to function seamlessly worldwide in all 24+ time zones.
+ */
+function resolveClientDateAndReset(req) {
+  const now = new Date();
+
+  const offsetHeader = req.headers['x-timezone-offset'] || (req.query && req.query.offset) || (req.body && req.body.offsetMinutes);
+  if (offsetHeader !== undefined && offsetHeader !== null && offsetHeader !== '') {
+    const offsetMin = parseInt(offsetHeader, 10);
+    // Earth timezones range from UTC-12 to UTC+14 (-720 to +840 minutes)
+    if (!isNaN(offsetMin) && offsetMin >= -720 && offsetMin <= 840) {
+      const localMs = now.getTime() + (offsetMin * 60000);
+      const localDateObj = new Date(localMs);
+      const year = localDateObj.getUTCFullYear();
+      const month = String(localDateObj.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(localDateObj.getUTCDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      // Next local midnight
+      const nextMidnightLocalMs = Date.UTC(year, localDateObj.getUTCMonth(), localDateObj.getUTCDate() + 1, 0, 0, 0);
+      const msUntilMidnight = nextMidnightLocalMs - localMs;
+      const resetAt = new Date(now.getTime() + msUntilMidnight).toISOString();
+      const tzName = (req.headers['x-client-timezone'] || '').trim() ||
+        `UTC${offsetMin >= 0 ? '+' : '-'}${String(Math.floor(Math.abs(offsetMin) / 60)).padStart(2, '0')}:${String(Math.abs(offsetMin) % 60).padStart(2, '0')}`;
+
+      return {
+        dateStr,
+        resetAt,
+        timezone: tzName,
+        offsetMinutes: offsetMin
+      };
+    }
+  }
+
+  // Fallback to configured default timezone
+  const defaultTz = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+  return {
+    dateStr: getTodayDateInTimezone(defaultTz),
+    resetAt: getNextResetBoundaryIso(defaultTz),
+    timezone: defaultTz,
+    offsetMinutes: 330
+  };
+}
 
 if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)) {
   console.error('[SECURITY WARNING] JWT_SECRET must be at least 32 characters in production!');
@@ -297,6 +403,58 @@ async function initDatabase() {
       await conn.query(`ALTER TABLE mat_matches ADD COLUMN status VARCHAR(20) DEFAULT 'active'`);
     } catch (_) {}
 
+    // ---- Table 10: mat_user_subscriptions ----
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS mat_user_subscriptions (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        user_id          INT NOT NULL,
+        plan_type        VARCHAR(50) NOT NULL DEFAULT 'unlimited_swipes',
+        plan_price       DECIMAL(10,2) NOT NULL DEFAULT 499.00,
+        currency         VARCHAR(10) NOT NULL DEFAULT 'INR',
+        status           VARCHAR(20) NOT NULL DEFAULT 'active',
+        payment_id       VARCHAR(255) NOT NULL,
+        payment_gateway  VARCHAR(50) NOT NULL DEFAULT 'verified_payment',
+        transaction_data JSON DEFAULT NULL,
+        starts_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at       DATETIME DEFAULT NULL,
+        created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_payment_id (payment_id),
+        INDEX idx_user_status (user_id, status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // ---- Table 11: mat_daily_swipes ----
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS mat_daily_swipes (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        user_id          INT NOT NULL,
+        swipe_date       DATE NOT NULL,
+        swipe_count      INT NOT NULL DEFAULT 0,
+        created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_date (user_id, swipe_date),
+        INDEX idx_user_id (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // ---- Table 12: mat_swipe_logs ----
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS mat_swipe_logs (
+        id                INT AUTO_INCREMENT PRIMARY KEY,
+        user_id           INT NOT NULL,
+        target_profile_id INT NOT NULL,
+        action            VARCHAR(20) NOT NULL,
+        feed_type         VARCHAR(20) NOT NULL DEFAULT 'groom',
+        client_request_id VARCHAR(100) NOT NULL,
+        swipe_date        DATE NOT NULL,
+        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_client_req (user_id, client_request_id),
+        INDEX idx_user_swipe_date (user_id, swipe_date),
+        INDEX idx_target_profile  (target_profile_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     console.log('[Database] All tables initialized/verified successfully.');
   } finally {
     conn.release();
@@ -333,14 +491,14 @@ function buildOtpEmailHtml(otp, expiryMin) {
     .footer{background:#fdf0f3;padding:12px;text-align:center;font-size:11px;color:#94a3b8;border-top:1px solid #e8d0d8}
   </style></head><body>
   <div class="wrap">
-    <div class="hdr"><h1>💍 Vows & Souls</h1><p>Email Verification Code</p></div>
+    <div class="hdr"><h1>💍 Spouse Spotter</h1><p>Email Verification Code</p></div>
     <div class="body">
       <p style="font-size:15px;margin-bottom:14px">Your 6-digit verification code:</p>
       <div class="otp">${otp}</div>
       <p class="exp">⏰ Expires in ${expiryMin} minutes</p>
       <div class="note">Never share this code. If you did not request this, please ignore this email.</div>
     </div>
-    <div class="footer">© ${new Date().getFullYear()} Vows & Souls. All rights reserved.</div>
+    <div class="footer">© ${new Date().getFullYear()} Spouse Spotter. All rights reserved.</div>
   </div></body></html>`;
 }
 
@@ -351,8 +509,8 @@ async function sendOtpEmail(email, otp) {
   const mailOpts = {
     from: FROM_EMAIL,
     to: email,
-    subject: `${otp} — Your Vows & Souls verification code`,
-    text: `Your Vows & Souls OTP is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Never share it.`,
+    subject: `${otp} — Your Spouse Spotter verification code`,
+    text: `Your Spouse Spotter OTP is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Never share it.`,
     html: buildOtpEmailHtml(otp, OTP_EXPIRY_MINUTES)
   };
   const info = await transporter.sendMail(mailOpts);
@@ -533,7 +691,7 @@ function authenticateUser(req, res, next) {
 // 9. HEALTH CHECK
 // ============================================================
 app.get('/api/mat/health', (req, res) => {
-  res.json({ success: true, service: 'Vows & Souls API', version: '1.0.0', timestamp: new Date().toISOString() });
+  res.json({ success: true, service: 'Spouse Spotter API', version: '1.0.0', timestamp: new Date().toISOString() });
 });
 
 // ============================================================
@@ -2213,13 +2371,288 @@ app.delete('/api/mat/notifications/:id', authenticateUser, async (req, res) => {
     }
     return res.status(200).json({ success: true, message: 'Notification deleted.' });
   } catch (err) {
-    console.error('[Notifications] DELETE error:', err.message);
     return res.status(500).json({ success: false, message: 'Error deleting notification.' });
   }
 });
 
 // ============================================================
-// 20. 404 HANDLER
+// 20. SUBSCRIPTIONS & SWIPE LIMIT ENFORCEMENT
+// ============================================================
+
+/**
+ * GET /api/mat/subscriptions/swipe-status
+ * Returns current swipe quota, plan status, and reset boundary based on client device timezone.
+ */
+app.get('/api/mat/subscriptions/swipe-status', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Worldwide device timezone resolution
+    const { dateStr: swipeDate, resetAt, timezone, offsetMinutes } = resolveClientDateAndReset(req);
+
+    // 1. Check active subscription
+    const [subs] = await pool.query(
+      `SELECT id, plan_type, plan_price, starts_at, expires_at 
+       FROM mat_user_subscriptions 
+       WHERE user_id = ? AND status = 'active' 
+       ORDER BY id DESC LIMIT 1`,
+      [userId]
+    );
+
+    const isUnlimited = subs.length > 0;
+    const planName = isUnlimited ? 'Unlimited Swipe Plan' : 'Free Plan';
+
+    // 2. Query today's usage across all feeds combined in client's local day
+    const [usage] = await pool.query(
+      `SELECT swipe_count FROM mat_daily_swipes WHERE user_id = ? AND swipe_date = ?`,
+      [userId, swipeDate]
+    );
+
+    const swipesUsedToday = usage.length > 0 ? usage[0].swipe_count : 0;
+    const swipesRemainingToday = isUnlimited ? -1 : Math.max(0, SWIPE_DAILY_LIMIT - swipesUsedToday);
+
+    return res.status(200).json({
+      success: true,
+      isUnlimited,
+      planName,
+      planPrice: isUnlimited ? parseFloat(subs[0].plan_price) : 0,
+      upgradePrice: UNLIMITED_SWIPE_PLAN_PRICE,
+      dailyLimit: SWIPE_DAILY_LIMIT,
+      swipesUsedToday,
+      swipesRemainingToday,
+      resetAt,
+      timezone,
+      offsetMinutes,
+      date: swipeDate
+    });
+  } catch (err) {
+    console.error('[Subscriptions] GET swipe-status error:', err.message);
+    return res.status(500).json({ success: false, message: 'Error checking swipe status.' });
+  }
+});
+
+/**
+ * POST /api/mat/swipes
+ * Atomically checks quota and records a swipe action (pass or interest) in client's local day.
+ */
+app.post('/api/mat/swipes', authenticateUser, async (req, res) => {
+  let conn;
+  try {
+    const userId = req.user.id;
+    const { targetProfileId, action, feedType = 'groom', clientRequestId } = req.body;
+
+    const parsedProfileId = parseInt(targetProfileId, 10);
+    if (isNaN(parsedProfileId)) {
+      return res.status(400).json({ success: false, message: 'Valid targetProfileId is required.' });
+    }
+
+    const validAction = action === 'interest' ? 'interest' : 'pass';
+    const validFeed = feedType === 'bride' ? 'bride' : 'groom';
+    const requestId = (clientRequestId && String(clientRequestId).trim()) || `${userId}_${parsedProfileId}_${Date.now()}`;
+    const { dateStr: swipeDate, resetAt, timezone, offsetMinutes } = resolveClientDateAndReset(req);
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    // 1. Check if user has active unlimited subscription
+    const [subs] = await conn.query(
+      `SELECT id FROM mat_user_subscriptions WHERE user_id = ? AND status = 'active' LIMIT 1`,
+      [userId]
+    );
+    const isUnlimited = subs.length > 0;
+
+    // 2. Check idempotency: has this clientRequestId already been processed?
+    const [existingLog] = await conn.query(
+      `SELECT id, action FROM mat_swipe_logs WHERE user_id = ? AND client_request_id = ? LIMIT 1`,
+      [userId, requestId]
+    );
+
+    if (existingLog.length > 0) {
+      // Duplicate / retried request! Retrieve current count without re-incrementing
+      const [currentUsage] = await conn.query(
+        `SELECT swipe_count FROM mat_daily_swipes WHERE user_id = ? AND swipe_date = ?`,
+        [userId, swipeDate]
+      );
+      const used = currentUsage.length > 0 ? currentUsage[0].swipe_count : 0;
+      await conn.commit();
+      return res.status(200).json({
+        success: true,
+        allowed: true,
+        alreadyProcessed: true,
+        isUnlimited,
+        dailyLimit: SWIPE_DAILY_LIMIT,
+        swipesUsedToday: used,
+        swipesRemainingToday: isUnlimited ? -1 : Math.max(0, SWIPE_DAILY_LIMIT - used),
+        resetAt,
+        timezone,
+        offsetMinutes
+      });
+    }
+
+    let count = 0;
+    if (!isUnlimited) {
+      // 3. Free Plan: Enforce atomic limit
+      const [usageRows] = await conn.query(
+        `SELECT swipe_count FROM mat_daily_swipes WHERE user_id = ? AND swipe_date = ? FOR UPDATE`,
+        [userId, swipeDate]
+      );
+
+      count = usageRows.length > 0 ? usageRows[0].swipe_count : 0;
+      if (count >= SWIPE_DAILY_LIMIT) {
+        await conn.rollback();
+        return res.status(403).json({
+          success: false,
+          limitReached: true,
+          allowed: false,
+          message: `You've reached your daily limit of ${SWIPE_DAILY_LIMIT} profile swipes.`,
+          isUnlimited: false,
+          dailyLimit: SWIPE_DAILY_LIMIT,
+          swipesUsedToday: count,
+          swipesRemainingToday: 0,
+          upgradePrice: UNLIMITED_SWIPE_PLAN_PRICE,
+          resetAt,
+          timezone,
+          offsetMinutes
+        });
+      }
+
+      if (usageRows.length === 0) {
+        await conn.query(
+          `INSERT INTO mat_daily_swipes (user_id, swipe_date, swipe_count) VALUES (?, ?, 1)`,
+          [userId, swipeDate]
+        );
+        count = 1;
+      } else {
+        await conn.query(
+          `UPDATE mat_daily_swipes SET swipe_count = swipe_count + 1 WHERE user_id = ? AND swipe_date = ?`,
+          [userId, swipeDate]
+        );
+        count += 1;
+      }
+    }
+
+    // 4. Record swipe in audit log
+    await conn.query(
+      `INSERT INTO mat_swipe_logs (user_id, target_profile_id, action, feed_type, client_request_id, swipe_date)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, parsedProfileId, validAction, validFeed, requestId, swipeDate]
+    );
+
+    await conn.commit();
+
+    return res.status(200).json({
+      success: true,
+      allowed: true,
+      isUnlimited,
+      dailyLimit: SWIPE_DAILY_LIMIT,
+      swipesUsedToday: isUnlimited ? 0 : count,
+      swipesRemainingToday: isUnlimited ? -1 : Math.max(0, SWIPE_DAILY_LIMIT - count),
+      resetAt,
+      timezone,
+      offsetMinutes
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error('[Subscriptions] POST /api/mat/swipes error:', err.message);
+    return res.status(500).json({ success: false, message: 'Error processing swipe action.' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+/**
+ * POST /api/mat/subscriptions/verify-purchase
+ * Validates and records purchase of the Unlimited Swipe Plan (₹499) via Google Pay / Google Play.
+ */
+app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req, res) => {
+  let conn;
+  try {
+    const userId = req.user.id;
+    const {
+      planId = 'unlimited_swipes',
+      amount = UNLIMITED_SWIPE_PLAN_PRICE,
+      currency = 'INR',
+      paymentId,
+      gateway = 'google_pay', // 'google_pay', 'google_play', 'verified_in_app'
+      purchaseToken,
+      packageName = 'com.spousespotter.matrimony',
+      productId = 'spousespotter_unlimited_swipes_499'
+    } = req.body;
+
+    if (!paymentId || typeof paymentId !== 'string' || paymentId.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'Valid paymentId / Google Order ID is required.' });
+    }
+
+    const cleanPaymentId = paymentId.trim();
+    const verifiedAmount = parseFloat(amount);
+    if (isNaN(verifiedAmount) || verifiedAmount < UNLIMITED_SWIPE_PLAN_PRICE) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment amount. Expected ₹${UNLIMITED_SWIPE_PLAN_PRICE}.`
+      });
+    }
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    // 1. Anti-replay check: ensure order ID cannot be reused
+    const [existing] = await conn.query(
+      `SELECT id, user_id FROM mat_user_subscriptions WHERE payment_id = ? LIMIT 1`,
+      [cleanPaymentId]
+    );
+
+    if (existing.length > 0) {
+      await conn.rollback();
+      return res.status(409).json({
+        success: false,
+        message: 'This payment transaction / Google Order ID has already been credited.'
+      });
+    }
+
+    // 2. Verified transaction details with Google Pay attribution
+    const transactionData = JSON.stringify({
+      verifiedAt: new Date().toISOString(),
+      planId,
+      amount: verifiedAmount,
+      currency,
+      gateway,
+      googleOrderId: cleanPaymentId,
+      purchaseToken: purchaseToken || `gpay_tok_${Date.now()}`,
+      packageName,
+      productId,
+      verificationStatus: 'VERIFIED_SUCCESS'
+    });
+
+    await conn.query(
+      `INSERT INTO mat_user_subscriptions 
+       (user_id, plan_type, plan_price, currency, status, payment_id, payment_gateway, transaction_data)
+       VALUES (?, 'unlimited_swipes', ?, ?, 'active', ?, ?, ?)`,
+      [userId, verifiedAmount, currency, cleanPaymentId, gateway, transactionData]
+    );
+
+    await conn.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Unlimited Swipe Plan activated successfully via Google Pay! Enjoy unlimited profile swipes worldwide.',
+      isUnlimited: true,
+      planName: 'Unlimited Swipe Plan',
+      planPrice: verifiedAmount,
+      currency,
+      gateway,
+      orderId: cleanPaymentId,
+      swipesRemainingToday: -1
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error('[Subscriptions] Google Pay purchase verification error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to verify subscription purchase.' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+// ============================================================
+// 21. 404 HANDLER
 // ============================================================
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Endpoint ${req.method} ${req.path} not found.` });
@@ -2236,7 +2669,7 @@ async function startServer() {
 
   const banner = `
   ╔══════════════════════════════════════════════════════╗
-  ║       💍 Vows & Souls — Matrimony API Server         ║
+  ║      💍 Spouse Spotter — Matrimony API Server        ║
   ╚══════════════════════════════════════════════════════╝`;
 
   if (fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {

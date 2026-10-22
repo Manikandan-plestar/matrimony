@@ -8,6 +8,7 @@ class MatrimonyTinderDeck extends StatefulWidget {
   final Function(MatrimonyProfileModel profile) onToggleSave;
   final Function(MatrimonyProfileModel profile) onExpressInterest;
   final Function(MatrimonyProfileModel profile) onViewDetails;
+  final Future<bool> Function(MatrimonyProfileModel profile, String action)? onSwipe;
   final VoidCallback? onReset;
 
   const MatrimonyTinderDeck({
@@ -16,6 +17,7 @@ class MatrimonyTinderDeck extends StatefulWidget {
     required this.onToggleSave,
     required this.onExpressInterest,
     required this.onViewDetails,
+    this.onSwipe,
     this.onReset,
   });
 
@@ -98,7 +100,7 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
     });
   }
 
-  void _onPanEnd(DragEndDetails details) {
+  Future<void> _onPanEnd(DragEndDetails details) async {
     if (_animController.isAnimating) return;
     final screenWidth = MediaQuery.of(context).size.width;
     final threshold = screenWidth * 0.25;
@@ -106,6 +108,16 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
 
     if (_dragOffset.dx < -threshold || vx < -450) {
       // Swiped Left: Pass -> Next Profile
+      if (widget.profiles.isNotEmpty) {
+        final profile = widget.profiles[_currentIndex];
+        if (widget.onSwipe != null) {
+          final allowed = await widget.onSwipe!(profile, 'pass');
+          if (!allowed) {
+            _animateBackToCenter();
+            return;
+          }
+        }
+      }
       if (widget.profiles.length > 1) {
         _animateSwipe(const Offset(-650, 0), -0.32, isNext: true);
       } else {
@@ -115,6 +127,13 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
       // Swiped Right: Express Interest!
       if (widget.profiles.isNotEmpty) {
         final profile = widget.profiles[_currentIndex];
+        if (widget.onSwipe != null) {
+          final allowed = await widget.onSwipe!(profile, 'interest');
+          if (!allowed) {
+            _animateBackToCenter();
+            return;
+          }
+        }
         widget.onExpressInterest(profile);
       }
       if (widget.profiles.length > 1) {
@@ -158,14 +177,25 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
     _animController.forward(from: 0.0);
   }
 
-  void _manualPass() {
-    if (_animController.isAnimating || widget.profiles.length <= 1) return;
-    _animateSwipe(const Offset(-650, 0), -0.3, isNext: true);
-  }
-
-  void _manualInterest() {
+  Future<void> _manualPass() async {
     if (_animController.isAnimating || widget.profiles.isEmpty) return;
     final profile = widget.profiles[_currentIndex];
+    if (widget.onSwipe != null) {
+      final allowed = await widget.onSwipe!(profile, 'pass');
+      if (!allowed) return;
+    }
+    if (widget.profiles.length > 1) {
+      _animateSwipe(const Offset(-650, 0), -0.3, isNext: true);
+    }
+  }
+
+  Future<void> _manualInterest() async {
+    if (_animController.isAnimating || widget.profiles.isEmpty) return;
+    final profile = widget.profiles[_currentIndex];
+    if (widget.onSwipe != null) {
+      final allowed = await widget.onSwipe!(profile, 'interest');
+      if (!allowed) return;
+    }
     widget.onExpressInterest(profile);
     if (widget.profiles.length > 1) {
       _animateSwipe(const Offset(650, 0), 0.3, isNext: true);

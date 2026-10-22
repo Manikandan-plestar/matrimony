@@ -1,11 +1,11 @@
 {
-    "name": "matrimony_app",
-    "short_name": "matrimony_app",
+    "name": "Spouse Spotter",
+    "short_name": "Spouse Spotter",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Spouse Spotter — Find Your Forever Match.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -39,8 +39,11 @@ class ApiService {
 
   static Future<Map<String, String>> _authHeaders() async {
     final token = await getToken();
+    final now = DateTime.now();
     return {
       'Content-Type': 'application/json',
+      'x-timezone-offset': now.timeZoneOffset.inMinutes.toString(),
+      'x-client-timezone': now.timeZoneName,
       if (token != null) 'Authorization': 'Bearer $token',
     };
   }

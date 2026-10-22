@@ -7,6 +7,8 @@ import '../providers/interaction_provider.dart';
 import '../providers/discovery_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/search_filter_provider.dart';
+import '../providers/subscription_provider.dart';
+import '../widgets/modals/daily_limit_modal.dart';
 
 /// User Account & Profile Hub (Opened from top-right Settings/Avatar icon)
 class SettingsProfileScreen extends StatelessWidget {
@@ -17,6 +19,7 @@ class SettingsProfileScreen extends StatelessWidget {
     final user = context.watch<AuthProvider>().currentUser;
     final myProfile = context.watch<ProfileProvider>().myProfile;
     final interaction = context.watch<InteractionProvider>();
+    final sub = context.watch<SubscriptionProvider>();
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -134,6 +137,11 @@ class SettingsProfileScreen extends StatelessWidget {
               ),
             ),
 
+            const SizedBox(height: 14),
+
+            // Subscription & Membership Status Card
+            _buildSubscriptionCard(context, sub),
+
             const SizedBox(height: 18),
 
             // 2. Group: Profile Management
@@ -216,7 +224,7 @@ class SettingsProfileScreen extends StatelessWidget {
               ),
               _buildMenuItem(
                 icon: Icons.info_outline_rounded,
-                title: 'About Vows & Souls App',
+                title: 'About Spouse Spotter App',
                 onTap: () => Navigator.pushNamed(context, '/about-app'),
               ),
             ]),
@@ -258,7 +266,7 @@ class SettingsProfileScreen extends StatelessWidget {
           ],
         ),
         content: const Text(
-          'Are you sure you want to log out of Vows & Souls? You will need to sign in again to access your account.',
+          'Are you sure you want to log out of Spouse Spotter? You will need to sign in again to access your account.',
         ),
         actions: [
           TextButton(
@@ -303,6 +311,7 @@ class SettingsProfileScreen extends StatelessWidget {
         context.read<DiscoveryProvider>().clear();
         context.read<InteractionProvider>().clear();
         context.read<NotificationProvider>().clear();
+        context.read<SubscriptionProvider>().reset();
         context.read<SearchFilterProvider>().clearAllFilters();
       }
     } catch (_) {
@@ -388,6 +397,125 @@ class SettingsProfileScreen extends StatelessWidget {
             const SizedBox(width: 6),
           ],
           const Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.textMuted),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionCard(BuildContext context, SubscriptionProvider sub) {
+    final isUnlimited = sub.isUnlimited;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isUnlimited ? const Color(0xFFFFFBEB) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isUnlimited ? const Color(0xFFFDE68A) : AppTheme.cardBorder,
+          width: isUnlimited ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isUnlimited
+                          ? const Color(0xFFFEF3C7)
+                          : AppTheme.burgundy.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isUnlimited ? Icons.stars_rounded : Icons.swipe_rounded,
+                      color: isUnlimited ? const Color(0xFFB45309) : AppTheme.burgundy,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isUnlimited ? 'Unlimited Swipe Plan' : 'Free Plan',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        isUnlimited
+                            ? 'Unlimited discovery swipes active'
+                            : '${sub.swipesRemainingToday} of 10 swipes remaining today',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isUnlimited ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isUnlimited ? const Color(0xFFF59E0B) : const Color(0xFFCBD5E1),
+                  ),
+                ),
+                child: Text(
+                  isUnlimited ? 'ACTIVE' : 'FREE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: isUnlimited ? const Color(0xFFB45309) : const Color(0xFF475569),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!isUnlimited) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: AppTheme.cardBorder),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Upgrade for unlimited swipes',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w500),
+                ),
+                TextButton(
+                  onPressed: () => DailyLimitModal.show(context),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Upgrade ₹499',
+                    style: TextStyle(
+                      color: AppTheme.burgundy,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

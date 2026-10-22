@@ -1,4 +1,4 @@
-package com.example.matrimony_app
+package matrimonyer.matrimony.com
 
 import io.flutter.embedding.android.FlutterActivity
 

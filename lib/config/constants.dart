@@ -1,6 +1,6 @@
 /// Matrimonial Application Constants and Dropdown Values
 class AppConstants {
-  static const String appName = 'Vows & Souls';
+  static const String appName = 'Spouse Spotter';
   static const String appTagline = 'Find Your Forever Match';
 
   // Dropdown list options

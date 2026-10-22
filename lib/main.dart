@@ -10,6 +10,7 @@ import 'providers/interaction_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/search_filter_provider.dart';
 import 'services/location_service.dart';
+import 'providers/subscription_provider.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
@@ -61,9 +62,11 @@ class MatrimonyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SearchFilterProvider()),
         // 7. Location Service for GPS reverse geocoding
         ChangeNotifierProvider(create: (_) => LocationService()),
+        // 8. Subscription Provider for Daily Swipe Quota & Unlimited Plan
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
       ],
       child: MaterialApp(
-        title: 'Vows & Souls',
+        title: 'Spouse Spotter',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         // SplashRouter handles session restore before showing any screen
@@ -154,6 +157,7 @@ class _SplashRouterState extends State<_SplashRouter> {
         context.read<DiscoveryProvider>().fetchAllProfiles(),
         context.read<InteractionProvider>().fetchAll(),
         context.read<NotificationProvider>().fetchNotifications(),
+        context.read<SubscriptionProvider>().fetchStatus(),
       ]);
 
       if (mounted) {
@@ -179,22 +183,41 @@ class _SplashRouterState extends State<_SplashRouter> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 90,
-              height: 90,
+              width: 95,
+              height: 95,
               decoration: BoxDecoration(
-                color: AppTheme.roseLight,
+                color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.burgundy, width: 2),
+                border: Border.all(color: AppTheme.rose, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.burgundy.withValues(alpha: 0.12),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              child: const Center(child: Text('💍', style: TextStyle(fontSize: 44))),
+              child: ClipOval(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Image.asset(
+                    'assets/images/spouse_spotter_icon.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Text('💍', style: TextStyle(fontSize: 44)),
+                    ),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
-              'Vows & Souls',
+              'Spouse Spotter',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w900,
                 color: AppTheme.burgundy,
+                letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 32),
