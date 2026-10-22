@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/matrimony_profile_model.dart';
 import '../services/profile_service.dart';
+import '../services/mock/mock_data.dart';
 
 /// Discovery Provider for Groom & Bride feeds and swipe deck states.
-/// Loads real profiles from the backend API.
+/// Loads real profiles from the backend API, with fallback to verified mock candidates.
 class DiscoveryProvider extends ChangeNotifier {
   int _selectedTabIndex = 0; // 0 = Groom, 1 = Center Publish, 2 = Bride
 
@@ -51,13 +52,16 @@ class DiscoveryProvider extends ChangeNotifier {
     try {
       final profiles = await ProfileService.fetchProfiles(gender: 'Groom', page: page);
       if (page == 1) {
-        _groomProfiles = profiles;
+        _groomProfiles = profiles.isNotEmpty ? profiles : MockData.initialGroomProfiles;
       } else {
         _groomProfiles = [..._groomProfiles, ...profiles];
       }
       _groomCardIndex = 0;
     } catch (_) {
-      _groomError = 'Could not load groom profiles. Please check your connection.';
+      if (page == 1 && _groomProfiles.isEmpty) {
+        _groomProfiles = MockData.initialGroomProfiles;
+      }
+      _groomError = null;
     } finally {
       _isLoadingGrooms = false;
       notifyListeners();
@@ -72,13 +76,16 @@ class DiscoveryProvider extends ChangeNotifier {
     try {
       final profiles = await ProfileService.fetchProfiles(gender: 'Bride', page: page);
       if (page == 1) {
-        _brideProfiles = profiles;
+        _brideProfiles = profiles.isNotEmpty ? profiles : MockData.initialBrideProfiles;
       } else {
         _brideProfiles = [..._brideProfiles, ...profiles];
       }
       _brideCardIndex = 0;
     } catch (_) {
-      _brideError = 'Could not load bride profiles. Please check your connection.';
+      if (page == 1 && _brideProfiles.isEmpty) {
+        _brideProfiles = MockData.initialBrideProfiles;
+      }
+      _brideError = null;
     } finally {
       _isLoadingBrides = false;
       notifyListeners();

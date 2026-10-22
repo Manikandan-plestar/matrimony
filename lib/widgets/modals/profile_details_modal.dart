@@ -5,6 +5,7 @@ import '../../models/matrimony_profile_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/interaction_provider.dart';
 import '../../services/profile_service.dart';
+import '../../utils/app_image_helper.dart';
 
 /// Image-First Profile Details Modal Sheet with Privacy-Enforced Field Visibility
 class ProfileDetailsModal extends StatefulWidget {
@@ -124,21 +125,11 @@ class _ProfileDetailsModalState extends State<ProfileDetailsModal> {
                                 borderRadius: BorderRadius.circular(20),
                                 child: AspectRatio(
                                   aspectRatio: 1.1,
-                                  child: Image.network(
-                                    p.profilePhotoUrl,
+                                  child: AppImageHelper.buildProfileImage(
+                                    url: p.profilePhotoUrl,
+                                    fullName: p.fullName,
+                                    gender: p.gender,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) => Container(
-                                      color: const Color(0xFFF1EAE0),
-                                      child: Center(
-                                        child: Icon(
-                                          p.gender == 'Groom'
-                                              ? Icons.male_rounded
-                                              : Icons.female_rounded,
-                                          size: 72,
-                                          color: AppTheme.burgundy.withValues(alpha: 0.4),
-                                        ),
-                                      ),
-                                    ),
                                   ),
                                 ),
                               ),

@@ -188,10 +188,9 @@ class _SplashRouterState extends State<_SplashRouter> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.rose, width: 1.5),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.burgundy.withValues(alpha: 0.12),
+                    color: AppTheme.burgundy.withValues(alpha: 0.10),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),
@@ -199,12 +198,16 @@ class _SplashRouterState extends State<_SplashRouter> {
               ),
               child: ClipOval(
                 child: Padding(
-                  padding: const EdgeInsets.all(8.0),
+                  padding: const EdgeInsets.all(2.0),
                   child: Image.asset(
-                    'assets/images/spouse_spotter_icon.png',
+                    'assets/images/matrimonyer_icon.png',
                     fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Text('💍', style: TextStyle(fontSize: 44)),
+                    errorBuilder: (_, __, ___) => Image.asset(
+                      'assets/images/spouse_spotter_icon.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Text('💍', style: TextStyle(fontSize: 44)),
+                      ),
                     ),
                   ),
                 ),

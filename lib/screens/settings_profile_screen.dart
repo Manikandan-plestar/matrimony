@@ -9,17 +9,50 @@ import '../providers/notification_provider.dart';
 import '../providers/search_filter_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../widgets/modals/daily_limit_modal.dart';
+import '../utils/app_image_helper.dart';
 
 /// User Account & Profile Hub (Opened from top-right Settings/Avatar icon)
-class SettingsProfileScreen extends StatelessWidget {
+class SettingsProfileScreen extends StatefulWidget {
   const SettingsProfileScreen({super.key});
+
+  @override
+  State<SettingsProfileScreen> createState() => _SettingsProfileScreenState();
+}
+
+class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ProfileProvider>().fetchMyProfile();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
     final myProfile = context.watch<ProfileProvider>().myProfile;
     final interaction = context.watch<InteractionProvider>();
-    final sub = context.watch<SubscriptionProvider>();
+
+    final displayName = (myProfile?.fullName.isNotEmpty ?? false)
+        ? myProfile!.fullName
+        : (user?.fullName.isNotEmpty ?? false)
+            ? user!.fullName
+            : (user?.email.isNotEmpty ?? false)
+                ? user!.email.split('@').first
+                : 'My Profile';
+
+    final displayOccupation = (myProfile?.occupation.isNotEmpty ?? false)
+        ? myProfile!.occupation
+        : 'Member';
+
+    final displayId = (myProfile?.profileId.isNotEmpty ?? false)
+        ? myProfile!.profileId
+        : (user?.activeProfileId.isNotEmpty ?? false)
+            ? user!.activeProfileId
+            : (user?.phone.isNotEmpty ?? false)
+                ? user!.phone
+                : 'Pending Registration';
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -52,26 +85,21 @@ class SettingsProfileScreen extends StatelessWidget {
                     children: [
                       CircleAvatar(
                         radius: 36,
-                        backgroundImage: (user?.profilePhotoUrl.isNotEmpty ?? false)
-                            ? NetworkImage(user!.profilePhotoUrl)
-                            : (myProfile?.profilePhotoUrl.isNotEmpty ?? false)
-                                ? NetworkImage(myProfile!.profilePhotoUrl)
-                                : null,
                         backgroundColor: AppTheme.roseLight,
-                        child: (user?.profilePhotoUrl.isEmpty ?? true) && (myProfile?.profilePhotoUrl.isEmpty ?? true)
-                            ? Text(
-                                (user?.fullName.isNotEmpty ?? false)
-                                    ? user!.fullName[0].toUpperCase()
-                                    : (myProfile?.fullName.isNotEmpty ?? false)
-                                        ? myProfile!.fullName[0].toUpperCase()
-                                        : 'U',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.burgundy,
-                                ),
-                              )
-                            : null,
+                        backgroundImage: AppImageHelper.resolveImageProvider(
+                          (myProfile?.profilePhotoUrl.isNotEmpty ?? false)
+                              ? myProfile!.profilePhotoUrl
+                              : user?.profilePhotoUrl,
+                        ),
+                        onBackgroundImageError: (_, __) {},
+                        child: Text(
+                          displayName.isNotEmpty ? displayName[0].toUpperCase() : 'M',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.burgundy,
+                          ),
+                        ),
                       ),
                       Positioned(
                         bottom: 0,
@@ -95,7 +123,7 @@ class SettingsProfileScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          user?.fullName ?? myProfile?.fullName ?? 'User',
+                          displayName,
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
@@ -104,7 +132,7 @@ class SettingsProfileScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'ID: ${myProfile?.profileId ?? user?.activeProfileId ?? user?.phone ?? "N/A"} • ${myProfile?.occupation ?? "Member"}',
+                          'ID: $displayId • $displayOccupation',
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppTheme.textSecondary,
@@ -117,14 +145,18 @@ class SettingsProfileScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: AppTheme.goldLight,
+                            color: myProfile != null ? AppTheme.goldLight : const Color(0xFFEFF6FF),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppTheme.gold.withValues(alpha: 0.4)),
+                            border: Border.all(
+                              color: myProfile != null
+                                  ? AppTheme.gold.withValues(alpha: 0.4)
+                                  : const Color(0xFFBFDBFE),
+                            ),
                           ),
-                          child: const Text(
-                            'Active Matrimonial Profile',
+                          child: Text(
+                            myProfile != null ? 'Active Matrimonial Profile' : 'Draft / New Member',
                             style: TextStyle(
-                              color: Color(0xFF854D0E),
+                              color: myProfile != null ? const Color(0xFF854D0E) : const Color(0xFF1D4ED8),
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
@@ -136,11 +168,6 @@ class SettingsProfileScreen extends StatelessWidget {
                 ],
               ),
             ),
-
-            const SizedBox(height: 14),
-
-            // Subscription & Membership Status Card
-            _buildSubscriptionCard(context, sub),
 
             const SizedBox(height: 18),
 
@@ -401,123 +428,5 @@ class SettingsProfileScreen extends StatelessWidget {
       ),
     );
   }
-
-  Widget _buildSubscriptionCard(BuildContext context, SubscriptionProvider sub) {
-    final isUnlimited = sub.isUnlimited;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isUnlimited ? const Color(0xFFFFFBEB) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isUnlimited ? const Color(0xFFFDE68A) : AppTheme.cardBorder,
-          width: isUnlimited ? 1.5 : 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: isUnlimited
-                          ? const Color(0xFFFEF3C7)
-                          : AppTheme.burgundy.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      isUnlimited ? Icons.stars_rounded : Icons.swipe_rounded,
-                      color: isUnlimited ? const Color(0xFFB45309) : AppTheme.burgundy,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isUnlimited ? 'Unlimited Swipe Plan' : 'Free Plan',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        isUnlimited
-                            ? 'Unlimited discovery swipes active'
-                            : '${sub.swipesRemainingToday} of 10 swipes remaining today',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isUnlimited ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isUnlimited ? const Color(0xFFF59E0B) : const Color(0xFFCBD5E1),
-                  ),
-                ),
-                child: Text(
-                  isUnlimited ? 'ACTIVE' : 'FREE',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: isUnlimited ? const Color(0xFFB45309) : const Color(0xFF475569),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (!isUnlimited) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1, color: AppTheme.cardBorder),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Upgrade for unlimited swipes',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w500),
-                ),
-                TextButton(
-                  onPressed: () => DailyLimitModal.show(context),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'Upgrade ₹499',
-                    style: TextStyle(
-                      color: AppTheme.burgundy,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
+

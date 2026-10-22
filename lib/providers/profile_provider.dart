@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/matrimony_profile_model.dart';
 import '../services/profile_service.dart';
@@ -182,13 +183,37 @@ class ProfileProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String> _ensureUploadedPhoto(String pathOrUrl) async {
+    final trimmed = pathOrUrl.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    try {
+      final file = File(trimmed);
+      if (await file.exists()) {
+        final uploaded = await ProfileService.uploadProfilePhoto(file);
+        if (uploaded != null && uploaded.isNotEmpty) {
+          return uploaded;
+        }
+      }
+    } catch (e) {
+      debugPrint('[ProfileProvider] Failed to upload local photo: $e');
+    }
+    return trimmed;
+  }
+
   /// Partial update for section editing (e.g. Personal Details or Partner Preference).
   /// Preserves all untouched phases without overwriting.
   Future<({bool success, String message})> updateProfileSection(Map<String, dynamic> data) async {
     _isUpdatingSection = true;
     notifyListeners();
     try {
-      final res = await ProfileService.updateProfilePartial(data);
+      final payload = Map<String, dynamic>.from(data);
+      if (payload['profilePhotoUrl'] is String) {
+        payload['profilePhotoUrl'] = await _ensureUploadedPhoto(payload['profilePhotoUrl'] as String);
+      }
+      final res = await ProfileService.updateProfilePartial(payload);
       if (res.success && res.profile != null) {
         _myProfile = res.profile;
         notifyListeners();
@@ -209,6 +234,7 @@ class ProfileProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final resolvedPhoto = await _ensureUploadedPhoto(draftPhotoUrl);
       final profileData = {
         'createdFor': draftCreatedFor,
         'fullName': draftFullName,
@@ -221,7 +247,7 @@ class ProfileProvider extends ChangeNotifier {
         'religion': draftReligion,
         'community': draftCommunity,
         'dietaryPreference': draftDietaryPreference,
-        'profilePhotoUrl': draftPhotoUrl,
+        'profilePhotoUrl': resolvedPhoto,
         'countryCode': draftCountryCode,
         'phone': draftPhone,
         'address': draftAddress,

@@ -695,6 +695,34 @@ app.get('/api/mat/health', (req, res) => {
 });
 
 // ============================================================
+// 9.1 FILE UPLOAD ROUTES
+// ============================================================
+
+/**
+ * POST /api/mat/upload/profile-photo
+ * Upload and resize profile photo via Multer & Sharp
+ */
+app.post('/api/mat/upload/profile-photo', authenticateUser, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ success: false, message: 'No photo uploaded. Please attach an image under field "photo".' });
+    }
+    const relativePath = await saveUploadedImage(req.file.buffer, 'profiles');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const fullUrl = `${protocol}://${host}${relativePath}`;
+    return res.json({
+      success: true,
+      url: fullUrl,
+      relativePath
+    });
+  } catch (err) {
+    console.error('[Upload] Error saving photo:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process and upload profile image.' });
+  }
+});
+
+// ============================================================
 // 10. AUTH ROUTES
 // ============================================================
 

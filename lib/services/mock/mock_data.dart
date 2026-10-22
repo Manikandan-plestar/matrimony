@@ -5,6 +5,9 @@ import '../../models/user_model.dart';
 
 /// Static and Reactive Mock Data Store for Matrimony Application
 class MockData {
+  static List<MatrimonyProfileModel> get grooms => initialGroomProfiles;
+  static List<MatrimonyProfileModel> get brides => initialBrideProfiles;
+
   // Current user's own account
   static final UserModel currentUser = UserModel(
     id: 'user_current_001',

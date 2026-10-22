@@ -172,12 +172,16 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
               ),
               child: ClipOval(
                 child: Padding(
-                  padding: const EdgeInsets.all(10.0),
+                  padding: const EdgeInsets.all(2.0),
                   child: Image.asset(
-                    'assets/images/spouse_spotter_icon.png',
+                    'assets/images/matrimonyer_icon.png',
                     fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(Icons.favorite_rounded, color: AppTheme.burgundy, size: 48),
+                    errorBuilder: (_, __, ___) => Image.asset(
+                      'assets/images/spouse_spotter_icon.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(Icons.favorite_rounded, color: AppTheme.burgundy, size: 48),
+                      ),
                     ),
                   ),
                 ),

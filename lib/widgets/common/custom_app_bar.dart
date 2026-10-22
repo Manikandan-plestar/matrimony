@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notification_provider.dart';
+import '../../utils/app_image_helper.dart';
 
 /// Top Matrimony App Bar with brand logo, unread notification count, and user profile avatar
 class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -31,25 +32,13 @@ class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
       titleSpacing: 16,
       title: Row(
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.rose.withValues(alpha: 0.3)),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.burgundy.withValues(alpha: 0.08),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Padding(
-              padding: const EdgeInsets.all(3.0),
-              child: Image.asset(
+          SizedBox(
+            width: 42,
+            height: 42,
+            child: Image.asset(
+              'assets/images/matrimonyer_icon.png',
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => Image.asset(
                 'assets/images/spouse_spotter_icon.png',
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Container(
@@ -61,7 +50,7 @@ class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 18),
+                  child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 20),
                 ),
               ),
             ),
@@ -182,24 +171,18 @@ class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
               child: CircleAvatar(
                 radius: 17,
                 backgroundColor: AppTheme.roseLight,
-                backgroundImage: (currentUser != null && currentUser.profilePhotoUrl.isNotEmpty)
-                    ? NetworkImage(currentUser.profilePhotoUrl)
-                    : null,
-                onBackgroundImageError: (currentUser != null && currentUser.profilePhotoUrl.isNotEmpty)
-                    ? (exception, stackTrace) {}
-                    : null,
-                child: (currentUser == null || currentUser.profilePhotoUrl.isEmpty)
-                    ? Text(
-                        (currentUser?.fullName.isNotEmpty ?? false)
-                            ? currentUser!.fullName[0].toUpperCase()
-                            : 'U',
-                        style: const TextStyle(
-                          color: AppTheme.burgundy,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      )
-                    : null,
+                backgroundImage: AppImageHelper.resolveImageProvider(currentUser?.profilePhotoUrl),
+                onBackgroundImageError: (_, __) {},
+                child: Text(
+                  (currentUser?.fullName.isNotEmpty ?? false)
+                      ? currentUser!.fullName[0].toUpperCase()
+                      : 'M',
+                  style: const TextStyle(
+                    color: AppTheme.burgundy,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ),
           ),

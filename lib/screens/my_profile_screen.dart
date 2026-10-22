@@ -3,39 +3,32 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/profile_provider.dart';
+import '../utils/app_image_helper.dart';
 
 /// My Matrimony Profile Screen
 /// Read-only presentation organized strictly according to the 3-phase registration structure.
-class MyProfileScreen extends StatelessWidget {
+class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
 
+  @override
+  State<MyProfileScreen> createState() => _MyProfileScreenState();
+}
+
+class _MyProfileScreenState extends State<MyProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ProfileProvider>().fetchMyProfile();
+    });
+  }
+
   Widget _buildProfilePhoto(String url) {
-    if (url.isEmpty) {
-      return Container(
-        color: const Color(0xFFF1EAE0),
-        child: const Center(child: Icon(Icons.person, size: 72, color: AppTheme.textMuted)),
-      );
-    }
-    final isNetwork = url.startsWith('http://') || url.startsWith('https://');
-    if (isNetwork) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFFF1EAE0),
-          child: const Center(child: Icon(Icons.person, size: 72, color: AppTheme.textMuted)),
-        ),
-      );
-    } else {
-      return Image.file(
-        File(url),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFFF1EAE0),
-          child: const Center(child: Icon(Icons.person, size: 72, color: AppTheme.textMuted)),
-        ),
-      );
-    }
+    return AppImageHelper.buildProfileImage(
+      url: url,
+      fullName: '',
+      fit: BoxFit.cover,
+    );
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../config/theme.dart';
 import '../../models/matrimony_profile_model.dart';
+import '../../utils/app_image_helper.dart';
 
 /// Image-First Matrimonial Profile Card
 class MatrimonyCardView extends StatelessWidget {
@@ -40,33 +41,11 @@ class MatrimonyCardView extends StatelessWidget {
           // 1. Dominant Large Profile Photograph (Image-First)
           GestureDetector(
             onTap: onViewDetails,
-            child: Image.network(
-              profile.profilePhotoUrl,
+            child: AppImageHelper.buildProfileImage(
+              url: profile.profilePhotoUrl,
+              fullName: profile.fullName,
+              gender: profile.gender,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: const Color(0xFFF1EAE0),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        profile.gender == 'Groom' ? Icons.male_rounded : Icons.female_rounded,
-                        size: 72,
-                        color: AppTheme.burgundy.withValues(alpha: 0.4),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        profile.fullName,
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             ),
           ),
 
