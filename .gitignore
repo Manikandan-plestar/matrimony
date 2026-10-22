@@ -49,3 +49,17 @@ app.*.map.json
 *.jks
 *.keystore
 
+# Sensitive Environment files
+.env
+.env.*
+backend/.env
+backend/.env.*
+*.env
+
+# Backend dependencies & uploads
+backend/node_modules/
+node_modules/
+backend/uploads/
+uploads/
+
+
