@@ -83,23 +83,12 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
                   // User Photo
                   Stack(
                     children: [
-                      CircleAvatar(
+                      AppImageHelper.buildAvatar(
+                        url: (myProfile?.profilePhotoUrl.isNotEmpty ?? false)
+                            ? myProfile!.profilePhotoUrl
+                            : user?.profilePhotoUrl,
+                        fullName: displayName,
                         radius: 36,
-                        backgroundColor: AppTheme.roseLight,
-                        backgroundImage: AppImageHelper.resolveImageProvider(
-                          (myProfile?.profilePhotoUrl.isNotEmpty ?? false)
-                              ? myProfile!.profilePhotoUrl
-                              : user?.profilePhotoUrl,
-                        ),
-                        onBackgroundImageError: (_, __) {},
-                        child: Text(
-                          displayName.isNotEmpty ? displayName[0].toUpperCase() : 'M',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.burgundy,
-                          ),
-                        ),
                       ),
                       Positioned(
                         bottom: 0,

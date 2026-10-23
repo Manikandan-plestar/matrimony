@@ -52,7 +52,7 @@ class DiscoveryProvider extends ChangeNotifier {
     try {
       final profiles = await ProfileService.fetchProfiles(gender: 'Groom', page: page);
       if (page == 1) {
-        _groomProfiles = profiles.isNotEmpty ? profiles : MockData.initialGroomProfiles;
+        _groomProfiles = profiles;
       } else {
         _groomProfiles = [..._groomProfiles, ...profiles];
       }
@@ -76,7 +76,7 @@ class DiscoveryProvider extends ChangeNotifier {
     try {
       final profiles = await ProfileService.fetchProfiles(gender: 'Bride', page: page);
       if (page == 1) {
-        _brideProfiles = profiles.isNotEmpty ? profiles : MockData.initialBrideProfiles;
+        _brideProfiles = profiles;
       } else {
         _brideProfiles = [..._brideProfiles, ...profiles];
       }

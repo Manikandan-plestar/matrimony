@@ -168,21 +168,10 @@ class MatrimonyAppBar extends StatelessWidget implements PreferredSizeWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppTheme.gold, width: 1.8),
               ),
-              child: CircleAvatar(
+              child: AppImageHelper.buildAvatar(
+                url: currentUser?.profilePhotoUrl,
+                fullName: currentUser?.fullName ?? 'M',
                 radius: 17,
-                backgroundColor: AppTheme.roseLight,
-                backgroundImage: AppImageHelper.resolveImageProvider(currentUser?.profilePhotoUrl),
-                onBackgroundImageError: (_, __) {},
-                child: Text(
-                  (currentUser?.fullName.isNotEmpty ?? false)
-                      ? currentUser!.fullName[0].toUpperCase()
-                      : 'M',
-                  style: const TextStyle(
-                    color: AppTheme.burgundy,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
               ),
             ),
           ),

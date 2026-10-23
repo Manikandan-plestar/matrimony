@@ -48,36 +48,22 @@ class AppImageHelper {
     final normalized = normalizePhotoUrl(url);
 
     Widget fallbackWidget() {
-      final initial = fullName.trim().isNotEmpty ? fullName.trim()[0].toUpperCase() : (gender == 'Bride' ? 'B' : 'G');
+      final initial = fullName.trim().isNotEmpty ? fullName.trim()[0].toUpperCase() : 'M';
+      final effectiveDimension = height ?? width ?? 100.0;
+      final fontSize = (effectiveDimension * 0.38).clamp(12.0, 56.0);
+
       return Container(
         width: width,
         height: height,
-        color: const Color(0xFFF1EAE0),
+        color: AppTheme.roseLight,
         alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              gender == 'Bride' ? Icons.female_rounded : Icons.male_rounded,
-              size: (height != null && height < 80) ? 28 : 64,
-              color: AppTheme.burgundy.withValues(alpha: 0.5),
-            ),
-            if (height == null || height >= 100) ...[
-              const SizedBox(height: 6),
-              Text(
-                fullName.isNotEmpty ? fullName : initial,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ],
+        child: Text(
+          initial,
+          style: TextStyle(
+            color: AppTheme.burgundy,
+            fontWeight: FontWeight.bold,
+            fontSize: fontSize,
+          ),
         ),
       );
     }
@@ -125,4 +111,30 @@ class AppImageHelper {
     }
     return imageWidget;
   }
+
+  /// Builds a circular avatar that renders the profile photo, or falls back to
+  /// the first letter of the name if no photo exists or image fails to load.
+  /// Never overlays the initial letter on top of the image.
+  static Widget buildAvatar({
+    required String? url,
+    required String fullName,
+    double radius = 20,
+    Color backgroundColor = AppTheme.roseLight,
+  }) {
+    return ClipOval(
+      child: Container(
+        width: radius * 2,
+        height: radius * 2,
+        color: backgroundColor,
+        child: buildProfileImage(
+          url: url,
+          fullName: fullName,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
+  }
 }
+

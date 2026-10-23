@@ -23,6 +23,7 @@ import 'screens/interests_screen.dart';
 import 'screens/matches_screen.dart';
 import 'screens/edit_personal_details_screen.dart';
 import 'screens/edit_partner_preferences_screen.dart';
+import 'widgets/common/wedding_pattern_background.dart';
 import 'screens/visitors_screen.dart';
 import 'screens/static_settings_screen.dart';
 
@@ -177,55 +178,72 @@ class _SplashRouterState extends State<_SplashRouter> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 95,
-              height: 95,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.burgundy.withValues(alpha: 0.10),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ClipOval(
-                child: Padding(
-                  padding: const EdgeInsets.all(2.0),
-                  child: Image.asset(
-                    'assets/images/matrimonyer_icon.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Image.asset(
-                      'assets/images/spouse_spotter_icon.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Center(
-                        child: Text('💍', style: TextStyle(fontSize: 44)),
-                      ),
+      body: WeddingPatternBackground(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 1. Couple Heart Logo Emblem
+              Container(
+                width: 130,
+                height: 130,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.burgundy.withValues(alpha: 0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
+                  ],
+                ),
+                child: Image.asset(
+                  'assets/images/matrimonyer_icon.png',
+                  fit: BoxFit.contain,
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Matrimonyer',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: AppTheme.burgundy,
-                letterSpacing: -0.5,
+
+              const SizedBox(height: 24),
+
+              // 2. Brand Name
+              const Text(
+                'Matrimonyer',
+                style: TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  color: AppTheme.burgundy,
+                  letterSpacing: -0.5,
+                ),
               ),
-            ),
-            const SizedBox(height: 32),
-            const CircularProgressIndicator(color: AppTheme.burgundy, strokeWidth: 3),
-          ],
+
+              const SizedBox(height: 4),
+
+              // 3. Subtitle / Tagline
+              const Text(
+                'Matrimonial Matchmaking',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFC27803),
+                  letterSpacing: 0.8,
+                ),
+              ),
+
+              const SizedBox(height: 38),
+
+              // 4. Loading indicator
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  color: AppTheme.burgundy,
+                  strokeWidth: 2.5,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -214,7 +214,7 @@ class _ProfileDetailsModalState extends State<ProfileDetailsModal> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Profile ID: ${p.profileId} • Created for ${isAuthorized ? p.createdFor : "Self"}',
+                                      'Profile ID: ${p.profileId}',
                                       style: const TextStyle(
                                         color: AppTheme.textSecondary,
                                         fontSize: 12,
@@ -349,6 +349,7 @@ class _ProfileDetailsModalState extends State<ProfileDetailsModal> {
                               _buildDetailRow('Education Preference', isAuthorized ? p.prefEducation : null, isPrivate: true, isAuthorized: isAuthorized),
                               _buildDetailRow('Occupation Preference', isAuthorized ? p.prefOccupation : null, isPrivate: true, isAuthorized: isAuthorized),
                               _buildDetailRow('Annual Income', isAuthorized ? p.prefIncome : null, isPrivate: true, isAuthorized: isAuthorized),
+                              _buildDetailRow('Dietary Preference', isAuthorized ? p.prefDietaryPreference : null, isPrivate: true, isAuthorized: isAuthorized),
                               _buildDetailRow('Expectations', isAuthorized ? p.partnerExpectations : null, isPrivate: true, isAuthorized: isAuthorized),
                             ],
                           ),

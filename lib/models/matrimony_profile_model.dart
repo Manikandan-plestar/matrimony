@@ -46,6 +46,7 @@ class MatrimonyProfileModel {
   final String prefEducation;
   final String prefOccupation;
   final String prefIncome;
+  final String prefDietaryPreference;
   final String partnerExpectations;
 
   // Biography & Badges
@@ -94,6 +95,7 @@ class MatrimonyProfileModel {
     required this.prefEducation,
     required this.prefOccupation,
     required this.prefIncome,
+    this.prefDietaryPreference = 'Does Not Matter',
     required this.partnerExpectations,
     required this.bio,
     this.countryCode = '+91',
@@ -145,6 +147,7 @@ class MatrimonyProfileModel {
     String? prefEducation,
     String? prefOccupation,
     String? prefIncome,
+    String? prefDietaryPreference,
     String? partnerExpectations,
     String? bio,
     bool? isVerified,
@@ -191,6 +194,7 @@ class MatrimonyProfileModel {
       prefEducation: prefEducation ?? this.prefEducation,
       prefOccupation: prefOccupation ?? this.prefOccupation,
       prefIncome: prefIncome ?? this.prefIncome,
+      prefDietaryPreference: prefDietaryPreference ?? this.prefDietaryPreference,
       partnerExpectations: partnerExpectations ?? this.partnerExpectations,
       bio: bio ?? this.bio,
       isVerified: isVerified ?? this.isVerified,

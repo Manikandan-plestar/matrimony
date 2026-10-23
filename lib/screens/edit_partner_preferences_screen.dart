@@ -29,6 +29,7 @@ class _EditPartnerPreferencesScreenState extends State<EditPartnerPreferencesScr
   String _prefEducation = 'Any Education';
   String _prefOccupation = 'Any Working Professional';
   String _prefIncome = 'Any Income Range';
+  String _prefDietaryPreference = 'Does Not Matter';
 
   bool _isSaving = false;
 
@@ -51,6 +52,7 @@ class _EditPartnerPreferencesScreenState extends State<EditPartnerPreferencesScr
     _prefEducation = p?.prefEducation.isNotEmpty == true ? p!.prefEducation : 'Any Education';
     _prefOccupation = p?.prefOccupation.isNotEmpty == true ? p!.prefOccupation : 'Any Working Professional';
     _prefIncome = p?.prefIncome.isNotEmpty == true ? p!.prefIncome : 'Any Income Range';
+    _prefDietaryPreference = p?.prefDietaryPreference.isNotEmpty == true ? p!.prefDietaryPreference : 'Does Not Matter';
 
     _expectationsController = TextEditingController(text: p?.partnerExpectations ?? '');
     _bioController = TextEditingController(text: p?.bio ?? '');
@@ -76,6 +78,7 @@ class _EditPartnerPreferencesScreenState extends State<EditPartnerPreferencesScr
       'prefEducation': _prefEducation,
       'prefOccupation': _prefOccupation,
       'prefIncome': _prefIncome,
+      'prefDietaryPreference': _prefDietaryPreference,
       'partnerExpectations': _expectationsController.text.trim(),
       'bio': _bioController.text.trim(),
     };
@@ -272,6 +275,24 @@ class _EditPartnerPreferencesScreenState extends State<EditPartnerPreferencesScr
                 ],
                 prefixIcon: Icons.currency_rupee_rounded,
                 onSelected: (val) => setState(() => _prefIncome = val),
+              ),
+              const SizedBox(height: 14),
+
+              // Dietary Preference
+              SearchableCustomDropdown(
+                label: 'Dietary Preference',
+                currentValue: _prefDietaryPreference,
+                options: const [
+                  'Does Not Matter',
+                  'Vegetarian',
+                  'Non-Vegetarian',
+                  'Eggetarian',
+                  'Vegan',
+                  'Jain Vegetarian',
+                ],
+                prefixIcon: Icons.restaurant_menu_rounded,
+                hint: 'Select diet preference...',
+                onSelected: (val) => setState(() => _prefDietaryPreference = val),
               ),
               const SizedBox(height: 22),
 

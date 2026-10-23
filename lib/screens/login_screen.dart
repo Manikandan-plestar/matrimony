@@ -7,6 +7,7 @@ import '../providers/interaction_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/profile_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../widgets/common/wedding_pattern_background.dart';
 
 /// Login screen — email input → OTP verify → main app
 ///
@@ -23,12 +24,14 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   // Step 1: email, Step 2: OTP
   int _step = 1;
+  bool _isRegisterMode = false; // false = Sign In, true = Create Account
   final _emailController = TextEditingController();
   final _otpController = TextEditingController();
   final _formKey1 = GlobalKey<FormState>();
   final _formKey2 = GlobalKey<FormState>();
 
   String? _errorText;
+  String? _infoText;
   bool _isBusy = false;
 
   @override
@@ -49,15 +52,19 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  String get _normalizedEmail => _emailController.text.trim().toLowerCase();
+
   Future<void> _requestOtp() async {
     if (!(_formKey1.currentState?.validate() ?? false)) return;
     setState(() {
       _isBusy = true;
       _errorText = null;
+      _infoText = null;
     });
 
     final auth = context.read<AuthProvider>();
-    final result = await auth.requestOtp(_emailController.text.trim());
+    final action = _isRegisterMode ? 'register' : 'login';
+    final result = await auth.requestOtp(_normalizedEmail, action: action);
 
     if (!mounted) return;
     setState(() { _isBusy = false; });
@@ -65,7 +72,16 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result.success) {
       setState(() { _step = 2; });
     } else {
-      setState(() { _errorText = result.message; });
+      if (result.code == 'ACCOUNT_EXISTS') {
+        // Direct the user to the existing email-verification login flow
+        setState(() {
+          _isRegisterMode = false;
+          _infoText = 'An account with this email already exists. Switched to Sign In — tap Continue to get your code.';
+          _errorText = null;
+        });
+      } else {
+        setState(() { _errorText = result.message; });
+      }
     }
   }
 
@@ -74,19 +90,29 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _isBusy = true;
       _errorText = null;
+      _infoText = null;
     });
 
     final auth = context.read<AuthProvider>();
+    final action = _isRegisterMode ? 'register' : 'login';
     final result = await auth.verifyOtp(
-      _emailController.text.trim(),
+      _normalizedEmail,
       _otpController.text.trim(),
+      action: action,
     );
 
     if (!mounted) return;
     setState(() { _isBusy = false; });
 
     if (!result.success) {
-      setState(() { _errorText = result.message; });
+      if (result.code == 'ACCOUNT_EXISTS') {
+        setState(() {
+          _isRegisterMode = false;
+          _errorText = 'An account with this email already exists. Switched to Sign In mode.';
+        });
+      } else {
+        setState(() { _errorText = result.message; });
+      }
       return;
     }
 
@@ -118,49 +144,38 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Logo area
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.burgundy.withValues(alpha: 0.10),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: Padding(
-                          padding: const EdgeInsets.all(2.0),
-                          child: Image.asset(
-                            'assets/images/matrimonyer_icon.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => Image.asset(
-                              'assets/images/spouse_spotter_icon.png',
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const Center(
-                                child: Text('💍', style: TextStyle(fontSize: 38)),
-                              ),
+      body: WeddingPatternBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Logo area
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 110,
+                        height: 110,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.burgundy.withValues(alpha: 0.12),
+                              blurRadius: 20,
+                              offset: const Offset(0, 6),
                             ),
-                          ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          'assets/images/matrimonyer_icon.png',
+                          fit: BoxFit.contain,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 18),
                     const Text(
                       'Matrimonyer',
                       style: TextStyle(
@@ -185,6 +200,30 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 48),
 
               if (_step == 1) _buildEmailStep() else _buildOtpStep(),
+
+              if (_infoText != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: Colors.blue.shade700, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _infoText!,
+                          style: TextStyle(color: Colors.blue.shade900, fontSize: 13, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               if (_errorText != null) ...[
                 const SizedBox(height: 16),
@@ -222,8 +261,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildEmailStep() {
     return Form(
@@ -231,16 +271,110 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Sign in or Create Account',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
+          // Mode Selector: Sign In vs Create Account
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      if (_isRegisterMode) {
+                        setState(() {
+                          _isRegisterMode = false;
+                          _errorText = null;
+                          _infoText = null;
+                        });
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: !_isRegisterMode ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: !_isRegisterMode
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Sign In',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: !_isRegisterMode ? FontWeight.bold : FontWeight.w500,
+                          color: !_isRegisterMode ? AppTheme.burgundy : AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      if (!_isRegisterMode) {
+                        setState(() {
+                          _isRegisterMode = true;
+                          _errorText = null;
+                          _infoText = null;
+                        });
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _isRegisterMode ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: _isRegisterMode
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Create Account',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: _isRegisterMode ? FontWeight.bold : FontWeight.w500,
+                          color: _isRegisterMode ? AppTheme.burgundy : AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            _isRegisterMode ? 'Create Your Account' : 'Welcome Back',
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Enter your email address to receive a verification code.',
-            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          Text(
+            _isRegisterMode
+                ? 'Enter your email address to register. One normalized email address corresponds to exactly one account.'
+                : 'Enter your registered email address to receive your login code.',
+            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,

@@ -9,6 +9,7 @@ import '../providers/profile_provider.dart';
 import '../services/country_code_data.dart';
 import '../services/device_image_picker_service.dart';
 import '../services/location_service.dart';
+import '../utils/app_image_helper.dart';
 import '../widgets/common/country_code_picker_widget.dart';
 import '../widgets/common/searchable_custom_dropdown.dart';
 import '../widgets/modals/profile_image_crop_modal.dart';
@@ -38,7 +39,6 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   String _selectedMaritalStatus = 'Never Married';
   String _selectedHeight = '5\' 10" (178 cm)';
   String _selectedDietaryPreference = 'Vegetarian';
-  String _createdFor = 'Self';
 
   bool _isFetchingAddress = false;
   bool _isSaving = false;
@@ -63,7 +63,6 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     _selectedMaritalStatus = p?.maritalStatus.isNotEmpty == true ? p!.maritalStatus : 'Never Married';
     _selectedHeight = p?.height.isNotEmpty == true ? p!.height : '5\' 10" (178 cm)';
     _selectedDietaryPreference = p?.dietaryPreference.isNotEmpty == true ? p!.dietaryPreference : 'Vegetarian';
-    _createdFor = p?.createdFor.isNotEmpty == true ? p!.createdFor : 'Self';
   }
 
   @override
@@ -76,34 +75,13 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   }
 
   Widget _buildProfilePhoto() {
-    if (_editingPhotoUrl.isEmpty) {
-      return Container(
-        color: const Color(0xFFF1EAE0),
-        child: const Center(
-          child: Icon(Icons.person_rounded, size: 54, color: AppTheme.textMuted),
-        ),
-      );
-    }
-    final isNetwork = _editingPhotoUrl.startsWith('http://') || _editingPhotoUrl.startsWith('https://');
-    if (isNetwork) {
-      return Image.network(
-        _editingPhotoUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFFF1EAE0),
-          child: const Center(child: Icon(Icons.person_rounded, size: 54, color: AppTheme.textMuted)),
-        ),
-      );
-    } else {
-      return Image.file(
-        File(_editingPhotoUrl),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFFF1EAE0),
-          child: const Center(child: Icon(Icons.person_rounded, size: 54, color: AppTheme.textMuted)),
-        ),
-      );
-    }
+    return AppImageHelper.buildProfileImage(
+      url: _editingPhotoUrl,
+      fullName: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'M',
+      width: 120,
+      height: 120,
+      fit: BoxFit.cover,
+    );
   }
 
   Future<void> _pickAndCropPhoto() async {
@@ -245,7 +223,6 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     setState(() => _isSaving = true);
 
     final Map<String, dynamic> personalData = {
-      'createdFor': _createdFor,
       'fullName': _nameController.text.trim(),
       'gender': _selectedGender,
       'dateOfBirth': _selectedDob?.toIso8601String().substring(0, 10) ?? '1997-01-01',
@@ -341,16 +318,6 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
 
               const SizedBox(height: 18),
               _buildSectionHeader('Personal Identity'),
-
-              // Profile Created For
-              SearchableCustomDropdown(
-                label: 'Profile Created For',
-                currentValue: _createdFor,
-                options: AppConstants.profileCreatedForOptions,
-                prefixIcon: Icons.people_outline_rounded,
-                onSelected: (val) => setState(() => _createdFor = val),
-              ),
-              const SizedBox(height: 14),
 
               // Full Name
               TextFormField(

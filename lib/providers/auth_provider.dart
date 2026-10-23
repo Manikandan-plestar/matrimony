@@ -44,16 +44,20 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Request an OTP for the given email address.
-  Future<({bool success, String message})> requestOtp(String email) async {
+  Future<({bool success, String message, String? code})> requestOtp(String email, {String? action}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final result = await AuthService.requestOtp(email);
-      return (success: result.success, message: result.message);
+      final result = await AuthService.requestOtp(email, action: action);
+      if (!result.success) {
+        _errorMessage = result.message;
+      }
+      return (success: result.success, message: result.message, code: result.code);
     } catch (e) {
-      return (success: false, message: 'Network error. Please check your connection.');
+      _errorMessage = 'Network error. Please check your connection.';
+      return (success: false, message: _errorMessage!, code: null);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -61,14 +65,14 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Verify an OTP and log in.
-  Future<({bool success, String message, MatrimonyProfileModel? profile, bool isNewUser})>
-      verifyOtp(String email, String otp) async {
+  Future<({bool success, String message, MatrimonyProfileModel? profile, bool isNewUser, String? code})>
+      verifyOtp(String email, String otp, {String? action}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final result = await AuthService.verifyOtp(email, otp);
+      final result = await AuthService.verifyOtp(email, otp, action: action);
       if (result.success && result.user != null) {
         _currentUser = result.user;
         _isLoggedIn = true;
@@ -80,6 +84,7 @@ class AuthProvider extends ChangeNotifier {
         message: result.message,
         profile: result.profile,
         isNewUser: result.isNewUser,
+        code: result.code,
       );
     } catch (e) {
       _errorMessage = 'Network error. Please check your connection.';
@@ -88,6 +93,7 @@ class AuthProvider extends ChangeNotifier {
         message: _errorMessage!,
         profile: null,
         isNewUser: false,
+        code: null,
       );
     } finally {
       _isLoading = false;

@@ -206,7 +206,6 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
               title: 'Personal Details & Identity',
               icon: Icons.person_outline_rounded,
               items: [
-                _buildInfoRow('Profile Created For', p.createdFor),
                 _buildInfoRow('Full Name', p.fullName),
                 _buildInfoRow('Gender', p.gender),
                 _buildInfoRow('Date of Birth', '${p.dateOfBirth.day}/${p.dateOfBirth.month}/${p.dateOfBirth.year} (${p.age} yrs)'),
@@ -257,6 +256,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                 _buildInfoRow('Preferred Education', p.prefEducation.isNotEmpty ? p.prefEducation : 'Any Education'),
                 _buildInfoRow('Preferred Occupation', p.prefOccupation.isNotEmpty ? p.prefOccupation : 'Any Working Professional'),
                 _buildInfoRow('Preferred Income', p.prefIncome.isNotEmpty ? p.prefIncome : 'Any Income Range'),
+                _buildInfoRow('Preferred Diet', p.prefDietaryPreference.isNotEmpty ? p.prefDietaryPreference : 'Does Not Matter'),
                 _buildInfoRow('Partner Expectations', p.partnerExpectations.isNotEmpty ? p.partnerExpectations : 'Not Specified'),
               ],
             ),

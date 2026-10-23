@@ -403,6 +403,16 @@ async function initDatabase() {
       await conn.query(`ALTER TABLE mat_matches ADD COLUMN status VARCHAR(20) DEFAULT 'active'`);
     } catch (_) {}
 
+    // Safe migration: ensure uk_email exists on mat_users
+    try {
+      await conn.query(`ALTER TABLE mat_users ADD UNIQUE KEY uk_email (email)`);
+    } catch (_) {}
+
+    // Safe migration: ensure pref_dietary_preference exists in mat_profiles
+    try {
+      await conn.query(`ALTER TABLE mat_profiles ADD COLUMN pref_dietary_preference VARCHAR(50) DEFAULT 'Does Not Matter'`);
+    } catch (_) {}
+
     // ---- Table 10: mat_user_subscriptions ----
     await conn.query(`
       CREATE TABLE IF NOT EXISTS mat_user_subscriptions (
@@ -582,6 +592,7 @@ function toFullProfile(row, interactionMeta = {}) {
     height: row.height || '',
     community: row.community || '',
     dietaryPreference: row.dietary_preference || '',
+    prefDietaryPreference: row.pref_dietary_preference || 'Does Not Matter',
     company: row.company || '',
     annualIncome: row.annual_income || '',
     country: row.country || '',
@@ -728,16 +739,32 @@ app.post('/api/mat/upload/profile-photo', authenticateUser, upload.single('photo
 
 /**
  * POST /api/mat/auth/request-otp
- * Body: { email }
+ * Body: { email, action?: 'register' | 'login' }
  * Validates email, rate-limits, sends OTP (or test OTP in dev), stores hash.
  */
 app.post('/api/mat/auth/request-otp', async (req, res) => {
   try {
     const rawEmail = (req.body.email || '').trim();
+    const action = (req.body.action || '').trim().toLowerCase();
     if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
       return res.status(400).json({ success: false, message: 'A valid email address is required.' });
     }
     const email = normalizeEmail(rawEmail);
+
+    // If registration is requested, enforce one-account-per-email rule
+    if (action === 'register') {
+      const [existingUser] = await pool.query(
+        'SELECT id FROM mat_users WHERE LOWER(TRIM(email)) = ?',
+        [email]
+      );
+      if (existingUser.length > 0) {
+        return res.status(409).json({
+          success: false,
+          code: 'ACCOUNT_EXISTS',
+          message: 'An account with this email address already exists. Please log in using email verification.'
+        });
+      }
+    }
 
     // Rate limiting: count recent OTP requests
     const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MIN * 60 * 1000);
@@ -798,13 +825,14 @@ app.post('/api/mat/auth/request-otp', async (req, res) => {
 
 /**
  * POST /api/mat/auth/verify-otp
- * Body: { email, otp }
+ * Body: { email, otp, action?: 'register' | 'login' }
  * Verifies OTP hash, creates account if new, returns JWT + user data.
  */
 app.post('/api/mat/auth/verify-otp', async (req, res) => {
   try {
     const rawEmail = (req.body.email || '').trim();
     const otpInput = (req.body.otp || '').trim();
+    const action = (req.body.action || '').trim().toLowerCase();
 
     if (!rawEmail || !otpInput) {
       return res.status(400).json({ success: false, message: 'Email and OTP are required.' });
@@ -863,12 +891,19 @@ app.post('/api/mat/auth/verify-otp', async (req, res) => {
     // Mark OTP as used
     await pool.query('UPDATE email_otp SET is_used = 1 WHERE id = ?', [otpRecord.id]);
 
-    // Upsert user: create if not exists, return existing if registered
-    let [userRows] = await pool.query('SELECT * FROM mat_users WHERE email = ?', [email]);
+    // Lookup existing user with case-insensitive normalized email
+    let [userRows] = await pool.query('SELECT * FROM mat_users WHERE LOWER(TRIM(email)) = ?', [email]);
     let user;
     let isNew = false;
 
     if (!userRows.length) {
+      if (action === 'login') {
+        return res.status(404).json({
+          success: false,
+          code: 'ACCOUNT_NOT_FOUND',
+          message: 'No account found with this email. Please register to create your account.'
+        });
+      }
       const [insertResult] = await pool.query(
         `INSERT INTO mat_users (email, full_name, country_code, mobile_number)
          VALUES (?, '', '+91', '')`,
@@ -879,6 +914,14 @@ app.post('/api/mat/auth/verify-otp', async (req, res) => {
       user = newRows[0];
       isNew = true;
     } else {
+      // User exists
+      if (action === 'register') {
+        return res.status(409).json({
+          success: false,
+          code: 'ACCOUNT_EXISTS',
+          message: 'An account with this email address already exists. Please log in using email verification.'
+        });
+      }
       user = userRows[0];
     }
 
@@ -1089,47 +1132,59 @@ app.post('/api/mat/profiles', authenticateUser, async (req, res) => {
     }
 
     // Check if user already has a profile
-    const [existing] = await pool.query('SELECT id FROM mat_profiles WHERE user_id = ?', [userId]);
+    const [existing] = await pool.query('SELECT * FROM mat_profiles WHERE user_id = ?', [userId]);
 
-    // Sanitize allowlisted fields only
+    // If request explicitly signals a new profile registration and profile already exists, do not overwrite
+    if (existing.length && b.preventOverwrite === true) {
+      return res.status(409).json({
+        success: false,
+        code: 'PROFILE_EXISTS',
+        message: 'A matrimonial profile already exists for this account.'
+      });
+    }
+
+    const prev = existing.length ? existing[0] : null;
+
+    // Sanitize allowlisted fields only, preserving existing values when omitted
     const data = {
       user_id: userId,
-      created_for: String(b.createdFor || 'Self').substring(0, 50),
-      full_name: String(b.fullName || '').trim().substring(0, 255),
-      gender: b.gender,
-      date_of_birth: b.dateOfBirth,
-      age: parseInt(b.age || 0, 10),
-      marital_status: String(b.maritalStatus || 'Never Married').substring(0, 50),
-      height: String(b.height || '').substring(0, 50),
-      mother_tongue: String(b.motherTongue || '').substring(0, 100),
-      religion: String(b.religion || '').substring(0, 100),
-      community: String(b.community || '').substring(0, 200),
-      dietary_preference: String(b.dietaryPreference || '').substring(0, 50),
-      profile_photo_url: String(b.profilePhotoUrl || '').substring(0, 2000),
-      country_code: String(b.countryCode || '+91').substring(0, 10),
-      phone: String(b.phone || '').substring(0, 30),
-      address: String(b.address || '').substring(0, 1000),
-      highest_education: String(b.highestEducation || '').substring(0, 200),
-      occupation: String(b.occupation || '').substring(0, 200),
-      company: String(b.company || '').substring(0, 200),
-      annual_income: String(b.annualIncome || '').substring(0, 100),
-      country: String(b.country || '').substring(0, 100),
-      state: String(b.state || '').substring(0, 100),
-      city: String(b.city || '').substring(0, 100),
-      locality: String(b.locality || '').substring(0, 100),
-      family_type: String(b.familyType || '').substring(0, 100),
-      family_background: String(b.familyBackground || '').substring(0, 2000),
-      family_values: String(b.familyValues || '').substring(0, 100),
-      pref_age_min: parseInt(b.prefAgeMin || 21, 10),
-      pref_age_max: parseInt(b.prefAgeMax || 40, 10),
-      pref_marital_status: String(b.prefMaritalStatus || '').substring(0, 100),
-      pref_location: String(b.prefLocation || 'Any Worldwide Location').substring(0, 255),
-      pref_education: String(b.prefEducation || '').substring(0, 200),
-      pref_occupation: String(b.prefOccupation || '').substring(0, 200),
-      pref_income: String(b.prefIncome || '').substring(0, 100),
-      partner_expectations: String(b.partnerExpectations || '').substring(0, 3000),
-      bio: String(b.bio || '').substring(0, 3000),
-      status: b.status === 'published' ? 'published' : 'draft',
+      created_for: String(b.createdFor || (prev ? prev.created_for : 'Self') || 'Self').substring(0, 50),
+      full_name: String(b.fullName || (prev ? prev.full_name : '')).trim().substring(0, 255),
+      gender: b.gender || (prev ? prev.gender : 'Groom'),
+      date_of_birth: b.dateOfBirth || (prev ? prev.date_of_birth : '1997-01-01'),
+      age: parseInt(b.age !== undefined ? b.age : (prev ? prev.age : 28), 10),
+      marital_status: String(b.maritalStatus || (prev ? prev.marital_status : 'Never Married')).substring(0, 50),
+      height: String(b.height || (prev ? prev.height : '')).substring(0, 50),
+      mother_tongue: String(b.motherTongue || (prev ? prev.mother_tongue : '')).substring(0, 100),
+      religion: String(b.religion || (prev ? prev.religion : '')).substring(0, 100),
+      community: String(b.community || (prev ? prev.community : '')).substring(0, 200),
+      dietary_preference: String(b.dietaryPreference || (prev ? prev.dietary_preference : '')).substring(0, 50),
+      profile_photo_url: String(b.profilePhotoUrl !== undefined ? b.profilePhotoUrl : (prev ? prev.profile_photo_url : '')).substring(0, 2000),
+      country_code: String(b.countryCode || (prev ? prev.country_code : '+91')).substring(0, 10),
+      phone: String(b.phone || (prev ? prev.phone : '')).substring(0, 30),
+      address: String(b.address !== undefined && b.address !== '' ? b.address : (prev ? prev.address : '')).substring(0, 1000),
+      highest_education: String(b.highestEducation || (prev ? prev.highest_education : '')).substring(0, 200),
+      occupation: String(b.occupation || (prev ? prev.occupation : '')).substring(0, 200),
+      company: String(b.company || (prev ? prev.company : '')).substring(0, 200),
+      annual_income: String(b.annualIncome || (prev ? prev.annual_income : '')).substring(0, 100),
+      country: String(b.country !== undefined && b.country !== '' ? b.country : (prev ? prev.country : '')).substring(0, 100),
+      state: String(b.state !== undefined && b.state !== '' ? b.state : (prev ? prev.state : '')).substring(0, 100),
+      city: String(b.city !== undefined && b.city !== '' ? b.city : (prev ? prev.city : '')).substring(0, 100),
+      locality: String(b.locality !== undefined && b.locality !== '' ? b.locality : (prev ? prev.locality : '')).substring(0, 100),
+      family_type: String(b.familyType || (prev ? prev.family_type : '')).substring(0, 100),
+      family_background: String(b.familyBackground || (prev ? prev.family_background : '')).substring(0, 2000),
+      family_values: String(b.familyValues || (prev ? prev.family_values : '')).substring(0, 100),
+      pref_age_min: parseInt(b.prefAgeMin !== undefined ? b.prefAgeMin : (prev ? prev.pref_age_min : 21), 10),
+      pref_age_max: parseInt(b.prefAgeMax !== undefined ? b.prefAgeMax : (prev ? prev.pref_age_max : 40), 10),
+      pref_marital_status: String(b.prefMaritalStatus !== undefined ? b.prefMaritalStatus : (prev ? prev.pref_marital_status : '')).substring(0, 100),
+      pref_location: String(b.prefLocation !== undefined ? b.prefLocation : (prev ? prev.pref_location : 'Any Worldwide Location')).substring(0, 255),
+      pref_education: String(b.prefEducation !== undefined ? b.prefEducation : (prev ? prev.pref_education : '')).substring(0, 200),
+      pref_occupation: String(b.prefOccupation !== undefined ? b.prefOccupation : (prev ? prev.pref_occupation : '')).substring(0, 200),
+      pref_income: String(b.prefIncome !== undefined ? b.prefIncome : (prev ? prev.pref_income : '')).substring(0, 100),
+      pref_dietary_preference: String(b.prefDietaryPreference !== undefined ? b.prefDietaryPreference : (prev ? prev.pref_dietary_preference : 'Does Not Matter')).substring(0, 50),
+      partner_expectations: String(b.partnerExpectations !== undefined ? b.partnerExpectations : (prev ? prev.partner_expectations : '')).substring(0, 3000),
+      bio: String(b.bio !== undefined ? b.bio : (prev ? prev.bio : '')).substring(0, 3000),
+      status: b.status === 'published' ? 'published' : (prev ? prev.status : 'draft'),
     };
 
     let profileId;
@@ -1221,6 +1276,7 @@ app.patch('/api/mat/profiles/me', authenticateUser, async (req, res) => {
       prefEducation: 'pref_education',
       prefOccupation: 'pref_occupation',
       prefIncome: 'pref_income',
+      prefDietaryPreference: 'pref_dietary_preference',
       partnerExpectations: 'partner_expectations',
       bio: 'bio',
     };
@@ -1339,30 +1395,65 @@ app.get('/api/mat/profiles', authenticateUser, async (req, res) => {
       return res.status(400).json({ success: false, message: 'gender must be Groom or Bride.' });
     }
 
-    // Get the viewer's own country for visibility filtering
+    // Get the viewer's own country and preferred location
     const [viewerRows] = await pool.query(
-      'SELECT country FROM mat_profiles WHERE user_id = ?',
+      'SELECT country, pref_location FROM mat_profiles WHERE user_id = ?',
       [userId]
     );
     const viewerCountry = viewerRows.length ? (viewerRows[0].country || '').toLowerCase().trim() : '';
+    const viewerPrefLoc = viewerRows.length ? (viewerRows[0].pref_location || '').trim() : '';
 
-    // Visibility: exclude own profile, only published profiles
-    // Country filter: show worldwide profiles OR profiles targeting viewer's country
+    // Build parameterized query for discovery
+    const conditions = [
+      'p.gender = ?',
+      "p.status = 'published'",
+      'p.user_id != ?',
+    ];
+    const params = [gender, userId];
+
+    // 1. Viewer's preferred location filter:
+    // If viewer specifies a preferred location (other than "Any Worldwide Location"),
+    // candidate's residence (country, state, city, locality, address) must match any of the locations requested.
+    if (viewerPrefLoc && viewerPrefLoc.toLowerCase() !== 'any worldwide location') {
+      const locTokens = viewerPrefLoc
+        .split(/[/,]/)
+        .map(t => t.trim().toLowerCase())
+        .filter(t => t.length > 0 && t !== 'any worldwide location');
+
+      if (locTokens.length > 0) {
+        const tokenClauses = [];
+        for (const token of locTokens) {
+          tokenClauses.push(
+            `(LOWER(p.country) LIKE ? OR LOWER(p.state) LIKE ? OR LOWER(p.city) LIKE ? OR LOWER(p.locality) LIKE ? OR LOWER(p.address) LIKE ?)`
+          );
+          const likePattern = `%${token}%`;
+          params.push(likePattern, likePattern, likePattern, likePattern, likePattern);
+        }
+        conditions.push(`(${tokenClauses.join(' OR ')})`);
+      }
+    }
+
+    // 2. Candidate's target location preference:
+    // Candidate must either be open to worldwide OR candidate's pref_location must include the viewer's country
+    if (viewerCountry) {
+      conditions.push(`(
+        p.pref_location IS NULL
+        OR p.pref_location = ''
+        OR p.pref_location = 'Any Worldwide Location'
+        OR LOWER(p.pref_location) LIKE ?
+      )`);
+      params.push(`%${viewerCountry}%`);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
     const [profiles] = await pool.query(`
       SELECT p.*
       FROM mat_profiles p
-      WHERE p.gender = ?
-        AND p.status = 'published'
-        AND p.user_id != ?
-        AND (
-          p.pref_location = 'Any Worldwide Location'
-          OR p.pref_location = ''
-          OR LOWER(p.pref_location) LIKE CONCAT('%', LOWER(?), '%')
-          OR ? = ''
-        )
+      WHERE ${whereClause}
       ORDER BY p.updated_at DESC
       LIMIT ? OFFSET ?
-    `, [gender, userId, viewerCountry, viewerCountry, limit, offset]);
+    `, [...params, limit, offset]);
 
     // Get interaction state for each profile (saved, interest sent)
     const profileIds = profiles.map(p => p.id);
@@ -1398,14 +1489,8 @@ app.get('/api/mat/profiles', authenticateUser, async (req, res) => {
     const [countRow] = await pool.query(`
       SELECT COUNT(*) AS total
       FROM mat_profiles p
-      WHERE p.gender = ? AND p.status = 'published' AND p.user_id != ?
-        AND (
-          p.pref_location = 'Any Worldwide Location'
-          OR p.pref_location = ''
-          OR LOWER(p.pref_location) LIKE CONCAT('%', LOWER(?), '%')
-          OR ? = ''
-        )
-    `, [gender, userId, viewerCountry, viewerCountry]);
+      WHERE ${whereClause}
+    `, params);
 
     return res.status(200).json({
       success: true,

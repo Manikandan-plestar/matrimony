@@ -6,6 +6,7 @@ import '../providers/search_filter_provider.dart';
 import '../widgets/common/curved_bottom_nav.dart';
 import '../widgets/common/custom_app_bar.dart';
 import '../widgets/modals/search_filter_sheet.dart';
+import '../providers/profile_provider.dart';
 import 'groom_feed_screen.dart';
 import 'bride_feed_screen.dart';
 
@@ -18,8 +19,44 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  void _openPublishWizard() {
-    Navigator.pushNamed(context, '/publish-wizard');
+  bool _isCheckingProfile = false;
+
+  Future<void> _handleAddProfileTap() async {
+    if (_isCheckingProfile) return;
+    setState(() => _isCheckingProfile = true);
+
+    try {
+      final profileProvider = context.read<ProfileProvider>();
+      // Backend is authoritative source of truth
+      await profileProvider.fetchMyProfile();
+
+      if (!mounted) return;
+
+      if (profileProvider.hasProfile) {
+        // User already has a matrimony profile -> display existing profile
+        Navigator.pushNamed(context, '/my-profile');
+      } else {
+        // User has not created a profile -> open 3-phase wizard
+        Navigator.pushNamed(context, '/publish-wizard').then((_) {
+          if (mounted) {
+            context.read<ProfileProvider>().fetchMyProfile();
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        final profileProvider = context.read<ProfileProvider>();
+        if (profileProvider.hasProfile) {
+          Navigator.pushNamed(context, '/my-profile');
+        } else {
+          Navigator.pushNamed(context, '/publish-wizard');
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingProfile = false);
+      }
+    }
   }
 
   void _openFilterSheet() {
@@ -57,7 +94,7 @@ class _MainScreenState extends State<MainScreen> {
         onTap: (index) {
           discovery.setTabIndex(index);
         },
-        onCenterTap: _openPublishWizard,
+        onCenterTap: _handleAddProfileTap,
       ),
     );
   }

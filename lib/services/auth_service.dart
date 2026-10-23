@@ -7,14 +7,16 @@ import '../models/matrimony_profile_model.dart';
 
 class AuthService {
   /// Request an OTP for the given email.
-  static Future<({bool success, String message, bool isTestOtp})>
-      requestOtp(String email) async {
-    final result = await ApiService.post('/api/mat/auth/request-otp',
-        body: {'email': email});
+  static Future<({bool success, String message, bool isTestOtp, String? code})>
+      requestOtp(String email, {String? action}) async {
+    final body = <String, dynamic>{'email': email};
+    if (action != null) body['action'] = action;
+    final result = await ApiService.post('/api/mat/auth/request-otp', body: body);
     return (
       success: result['success'] == true,
       message: result['message'] as String? ?? 'Error sending OTP.',
       isTestOtp: result['isTestOtp'] == true,
+      code: result['code'] as String?,
     );
   }
 
@@ -27,9 +29,11 @@ class AuthService {
         UserModel? user,
         MatrimonyProfileModel? profile,
         bool isNewUser,
-      })> verifyOtp(String email, String otp) async {
-    final result = await ApiService.post('/api/mat/auth/verify-otp',
-        body: {'email': email, 'otp': otp});
+        String? code,
+      })> verifyOtp(String email, String otp, {String? action}) async {
+    final body = <String, dynamic>{'email': email, 'otp': otp};
+    if (action != null) body['action'] = action;
+    final result = await ApiService.post('/api/mat/auth/verify-otp', body: body);
 
     if (result['success'] != true) {
       return (
@@ -39,6 +43,7 @@ class AuthService {
         user: null,
         profile: null,
         isNewUser: false,
+        code: result['code'] as String?,
       );
     }
 
@@ -76,6 +81,7 @@ class AuthService {
       user: user,
       profile: profile,
       isNewUser: result['isNewUser'] == true,
+      code: null,
     );
   }
 
@@ -164,6 +170,7 @@ MatrimonyProfileModel profileFromApi(Map<String, dynamic> d) {
     prefEducation: d['prefEducation'] as String? ?? '',
     prefOccupation: d['prefOccupation'] as String? ?? '',
     prefIncome: d['prefIncome'] as String? ?? '',
+    prefDietaryPreference: d['prefDietaryPreference'] as String? ?? 'Does Not Matter',
     partnerExpectations: d['partnerExpectations'] as String? ?? '',
     bio: d['bio'] as String? ?? '',
     countryCode: d['countryCode'] as String? ?? '+91',

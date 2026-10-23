@@ -10,6 +10,7 @@ import '../providers/profile_provider.dart';
 import '../services/country_code_data.dart';
 import '../services/device_image_picker_service.dart';
 import '../services/location_service.dart';
+import '../utils/app_image_helper.dart';
 import '../widgets/common/country_code_picker_widget.dart';
 import '../widgets/common/searchable_custom_dropdown.dart';
 import '../widgets/common/searchable_location_picker.dart';
@@ -36,9 +37,6 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
   late TextEditingController _addressController;
   late TextEditingController _communityController;
   late TextEditingController _companyController;
-  late TextEditingController _cityController;
-  late TextEditingController _stateController;
-  late TextEditingController _localityController;
   late TextEditingController _familyBgController;
   late TextEditingController _expectationsController;
   late TextEditingController _bioController;
@@ -55,9 +53,6 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
     _addressController = TextEditingController(text: p.draftAddress);
     _communityController = TextEditingController(text: p.draftCommunity);
     _companyController = TextEditingController(text: p.draftCompany);
-    _cityController = TextEditingController(text: p.draftCity);
-    _stateController = TextEditingController(text: p.draftState);
-    _localityController = TextEditingController(text: p.draftLocality);
     _familyBgController = TextEditingController(text: p.draftFamilyBackground);
     _expectationsController = TextEditingController(text: p.draftPartnerExpectations);
     _bioController = TextEditingController(text: p.draftBio);
@@ -71,9 +66,6 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
     _addressController.dispose();
     _communityController.dispose();
     _companyController.dispose();
-    _cityController.dispose();
-    _stateController.dispose();
-    _localityController.dispose();
     _familyBgController.dispose();
     _expectationsController.dispose();
     _bioController.dispose();
@@ -88,47 +80,18 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
     p.draftAddress = _addressController.text.trim();
     p.draftCommunity = _communityController.text;
     p.draftCompany = _companyController.text;
-    p.draftCity = _cityController.text;
-    p.draftState = _stateController.text;
-    p.draftLocality = _localityController.text;
     p.draftFamilyBackground = _familyBgController.text;
     p.draftPartnerExpectations = _expectationsController.text;
     p.draftBio = _bioController.text;
   }
 
   Widget _buildImagePreviewWidget(String path, {double width = 70, double height = 70, double borderRadius = 12}) {
-    final isNetwork = path.startsWith('http://') || path.startsWith('https://');
-    Widget image;
-    if (isNetwork) {
-      image = Image.network(
-        path,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: width,
-          height: height,
-          color: const Color(0xFFF1EAE0),
-          child: const Icon(Icons.person, color: Colors.grey),
-        ),
-      );
-    } else {
-      image = Image.file(
-        File(path),
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: width,
-          height: height,
-          color: const Color(0xFFF1EAE0),
-          child: const Icon(Icons.person, color: Colors.grey),
-        ),
-      );
-    }
-    return ClipRRect(
+    return AppImageHelper.buildProfileImage(
+      url: path,
+      fullName: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'M',
+      width: width,
+      height: height,
       borderRadius: BorderRadius.circular(borderRadius),
-      child: image,
     );
   }
 
@@ -144,12 +107,10 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
         setState(() {
           _addressController.text = location.formattedAddress;
           p.draftAddress = location.formattedAddress;
-          if (_cityController.text.trim().isEmpty && location.city.isNotEmpty) {
-            _cityController.text = location.city;
+          if (location.city.isNotEmpty) {
             p.draftCity = location.city;
           }
-          if (_stateController.text.trim().isEmpty && location.state.isNotEmpty) {
-            _stateController.text = location.state;
+          if (location.state.isNotEmpty) {
             p.draftState = location.state;
           }
           if (location.country.isNotEmpty) {
@@ -318,7 +279,7 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
           _buildStepConnector(1, currentPhase),
           _buildStepItem(2, 'Background', currentPhase),
           _buildStepConnector(2, currentPhase),
-          _buildStepItem(3, 'Location & Bio', currentPhase),
+          _buildStepItem(3, 'Partner Preferences', currentPhase),
         ],
       ),
     );
@@ -834,167 +795,84 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
   }
 
   // ==========================================
-  // PHASE 3: Worldwide Location & Preferences
+  // PHASE 3: Partner Preferences
   // ==========================================
   Widget _buildPhase3(ProfileProvider p) {
-    final availableStates = WorldwideLocations.getStatesForCountry(p.draftCountry);
-    final countryInfo = WorldwideLocations.findCountry(p.draftCountry);
-
     return Form(
       key: _formKey3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionTitle('3. Worldwide Location & Residence'),
-
-          // Country Selector (Searchable worldwide list)
-          InkWell(
-            onTap: () {
-              SearchableLocationPicker.show(
-                context: context,
-                title: 'Select Country',
-                items: WorldwideLocations.countries.map((c) => c.name).toList(),
-                selectedItem: p.draftCountry,
-                isCountryPicker: true,
-                onSelected: (selectedCountry) {
-                  setState(() {
-                    p.draftCountry = selectedCountry;
-                    // Reset state if not applicable
-                    final newStates = WorldwideLocations.getStatesForCountry(selectedCountry);
-                    if (newStates.isNotEmpty) {
-                      _stateController.text = newStates.first;
-                      p.draftState = newStates.first;
-                    } else {
-                      _stateController.clear();
-                      p.draftState = '';
-                    }
-                  });
-                },
-              );
-            },
-            borderRadius: BorderRadius.circular(14),
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Country of Residence *',
-                prefixIcon: Icon(Icons.public_rounded),
-                suffixIcon: Icon(Icons.arrow_drop_down_rounded, size: 28),
-              ),
-              child: Row(
-                children: [
-                  if (countryInfo != null) ...[
-                    Text(countryInfo.flag, style: const TextStyle(fontSize: 18)),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: Text(
-                      p.draftCountry.isNotEmpty ? p.draftCountry : 'Select Country',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: p.draftCountry.isNotEmpty ? AppTheme.textPrimary : AppTheme.textMuted,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // State / Province / Region
-          if (availableStates.isNotEmpty)
-            InkWell(
-              onTap: () {
-                SearchableLocationPicker.show(
-                  context: context,
-                  title: 'Select State / Region',
-                  items: availableStates,
-                  selectedItem: p.draftState,
-                  onSelected: (selectedState) {
-                    setState(() {
-                      p.draftState = selectedState;
-                      _stateController.text = selectedState;
-                    });
-                  },
-                );
-              },
-              borderRadius: BorderRadius.circular(14),
-              child: InputDecorator(
-                decoration: InputDecoration(
-                  labelText: 'State / Province / Region *',
-                  hintText: 'Select region in ${p.draftCountry}',
-                  prefixIcon: const Icon(Icons.map_outlined),
-                  suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 28),
-                ),
-                child: Text(
-                  p.draftState.isNotEmpty ? p.draftState : 'Select State / Region',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: p.draftState.isNotEmpty ? AppTheme.textPrimary : AppTheme.textMuted,
-                  ),
-                ),
-              ),
-            )
-          else
-            TextFormField(
-              controller: _stateController,
-              decoration: InputDecoration(
-                labelText: 'State / Province / Region *',
-                hintText: 'e.g. County, Province or Canton',
-                prefixIcon: const Icon(Icons.map_outlined),
-              ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Please enter state or region' : null,
-            ),
-          const SizedBox(height: 14),
-
-          // City / Town (Required)
-          TextFormField(
-            controller: _cityController,
-            decoration: const InputDecoration(
-              labelText: 'City / Town *',
-              hintText: 'e.g. London, Toronto, New York, Chennai',
-              prefixIcon: Icon(Icons.location_city_rounded),
-            ),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Please enter city or district' : null,
-          ),
-          const SizedBox(height: 14),
-
-          // Locality / Postal Code (Optional)
-          TextFormField(
-            controller: _localityController,
-            decoration: const InputDecoration(
-              labelText: 'Locality / Area / Postal Code (Optional)',
-              hintText: 'e.g. Manhattan, Kensington, Adyar',
-              prefixIcon: Icon(Icons.pin_drop_outlined),
-            ),
-          ),
-          const SizedBox(height: 22),
-
-          _buildSectionTitle('Partner Preferences'),
+          _buildSectionTitle('3. Partner Preferences'),
 
           // Preferred Age Range
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Preferred Age Range',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              Text('${p.draftPrefAgeMin} - ${p.draftPrefAgeMax} yrs',
-                  style: const TextStyle(color: AppTheme.burgundy, fontWeight: FontWeight.bold)),
-            ],
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.cardBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Preferred Age Range',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.roseLight,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${p.draftPrefAgeMin} - ${p.draftPrefAgeMax} Yrs',
+                        style: const TextStyle(
+                          color: AppTheme.burgundy,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                RangeSlider(
+                  values: RangeValues(p.draftPrefAgeMin.toDouble(), p.draftPrefAgeMax.toDouble()),
+                  min: 18,
+                  max: 60,
+                  divisions: 42,
+                  activeColor: AppTheme.burgundy,
+                  inactiveColor: const Color(0xFFE2E8F0),
+                  onChanged: (values) {
+                    setState(() {
+                      p.draftPrefAgeMin = values.start.round();
+                      p.draftPrefAgeMax = values.end.round();
+                    });
+                  },
+                ),
+              ],
+            ),
           ),
-          RangeSlider(
-            values: RangeValues(p.draftPrefAgeMin.toDouble(), p.draftPrefAgeMax.toDouble()),
-            min: 20,
-            max: 45,
-            divisions: 25,
-            activeColor: AppTheme.burgundy,
-            onChanged: (v) {
-              setState(() {
-                p.draftPrefAgeMin = v.start.round();
-                p.draftPrefAgeMax = v.end.round();
-              });
-            },
+          const SizedBox(height: 14),
+
+          // Preferred Marital Status
+          SearchableCustomDropdown(
+            label: 'Preferred Marital Status',
+            currentValue: p.draftPrefMaritalStatus,
+            options: const [
+              'Never Married',
+              'Divorced',
+              'Awaiting Divorce',
+              'Widowed',
+              'Does Not Matter',
+            ],
+            prefixIcon: Icons.favorite_border_rounded,
+            onSelected: (val) => setState(() => p.draftPrefMaritalStatus = val),
           ),
           const SizedBox(height: 14),
 
@@ -1030,13 +908,88 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
           ),
           const SizedBox(height: 14),
 
+          // Preferred Education
+          SearchableCustomDropdown(
+            label: 'Preferred Education',
+            currentValue: p.draftPrefEducation,
+            options: const [
+              'Any Education',
+              'B.E / B.Tech / Engineering',
+              'Masters / M.Tech / MBA',
+              'Medicine / MBBS / MD',
+              'Chartered Accountant / Finance',
+              'Doctorate / Ph.D',
+              'Bachelor Degree',
+            ],
+            prefixIcon: Icons.school_outlined,
+            onSelected: (val) => setState(() => p.draftPrefEducation = val),
+          ),
+          const SizedBox(height: 14),
+
+          // Preferred Occupation
+          SearchableCustomDropdown(
+            label: 'Preferred Occupation',
+            currentValue: p.draftPrefOccupation,
+            options: const [
+              'Any Working Professional',
+              'Software / IT Professional',
+              'Doctor / Healthcare Professional',
+              'Business Owner / Entrepreneur',
+              'Government / Civil Services',
+              'Banking / Finance Professional',
+              'Educator / Professor',
+            ],
+            prefixIcon: Icons.work_outline_rounded,
+            onSelected: (val) => setState(() => p.draftPrefOccupation = val),
+          ),
+          const SizedBox(height: 14),
+
+          // Preferred Annual Income
+          SearchableCustomDropdown(
+            label: 'Preferred Annual Income',
+            currentValue: p.draftPrefIncome,
+            options: const [
+              'Any Income Range',
+              '₹5 - 10 Lakhs',
+              '₹10 - 20 Lakhs',
+              '₹20 - 35 Lakhs',
+              '₹35 - 50 Lakhs',
+              '₹50 Lakhs & Above',
+            ],
+            prefixIcon: Icons.currency_rupee_rounded,
+            onSelected: (val) => setState(() => p.draftPrefIncome = val),
+          ),
+          const SizedBox(height: 14),
+
+          // Preferred Dietary Preference
+          SearchableCustomDropdown(
+            label: 'Dietary Preference',
+            currentValue: p.draftPrefDietaryPreference,
+            options: const [
+              'Does Not Matter',
+              'Vegetarian',
+              'Non-Vegetarian',
+              'Eggetarian',
+              'Vegan',
+              'Jain Vegetarian',
+            ],
+            prefixIcon: Icons.restaurant_menu_rounded,
+            hint: 'Select preferred diet (e.g. Vegetarian, Any)...',
+            searchHint: 'Search dietary preference...',
+            onSelected: (val) {
+              setState(() => p.draftPrefDietaryPreference = val);
+            },
+          ),
+          const SizedBox(height: 14),
+
           // Partner Expectations
           TextFormField(
             controller: _expectationsController,
             maxLines: 2,
             decoration: const InputDecoration(
               labelText: 'Partner Expectations (Optional)',
-              hintText: 'e.g. Caring, ambitious life partner with mutual respect.',
+              hintText: 'Describe values, lifestyle compatibility, personality traits...',
+              prefixIcon: Icon(Icons.handshake_outlined),
             ),
           ),
           const SizedBox(height: 14),
@@ -1048,6 +1001,7 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
             decoration: const InputDecoration(
               labelText: 'About Candidate (Short Bio) *',
               hintText: 'Introduce personal interests, lifestyle, values, and outlook...',
+              prefixIcon: Icon(Icons.info_outline_rounded),
             ),
             validator: (v) =>
                 (v == null || v.trim().isEmpty) ? 'Please write a short bio about yourself' : null,
@@ -1092,7 +1046,7 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Location: ${_cityController.text.trim().isEmpty ? "Location" : _cityController.text.trim()}, ${p.draftCountry} • ${p.draftHighestEducation}',
+                  'Location: ${p.draftCity.isNotEmpty ? p.draftCity : (p.draftCountry.isNotEmpty ? p.draftCountry : "Worldwide")} • ${p.draftHighestEducation}',
                   style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                 ),
               ],

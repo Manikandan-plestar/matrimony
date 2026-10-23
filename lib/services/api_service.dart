@@ -14,8 +14,8 @@ class ApiService {
   // Development: 'http://10.0.2.2:5001' (Android emulator → localhost)
   // Device on LAN: 'http://192.168.x.x:5001'
   // Production:  'https://apps.plestarinc.com:3010'
-  static const String _baseUrl = 'https://apps.plestarinc.com:3010';
-  // static const String _baseUrl = 'http://10.0.2.2:5001';
+  // static const String _baseUrl = 'https://apps.plestarinc.com:3010';
+  static const String _baseUrl = 'http://10.0.2.2:5001';
 
   static const String _tokenKey = 'mat_jwt_token';
 

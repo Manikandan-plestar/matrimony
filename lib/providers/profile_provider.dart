@@ -46,13 +46,14 @@ class ProfileProvider extends ChangeNotifier {
   String draftFamilyValues = 'Moderate';
 
   // Phase 3 Draft fields
-  int draftPrefAgeMin = 24;
-  int draftPrefAgeMax = 28;
+  int draftPrefAgeMin = 21;
+  int draftPrefAgeMax = 35;
   String draftPrefMaritalStatus = 'Never Married';
   String draftPrefLocation = 'Any Worldwide Location';
-  String draftPrefEducation = 'B.E / B.Tech / Masters';
-  String draftPrefOccupation = 'Working Professional';
-  String draftPrefIncome = '₹10 Lakhs & above';
+  String draftPrefEducation = 'Any Education';
+  String draftPrefOccupation = 'Any Working Professional';
+  String draftPrefIncome = 'Any Income Range';
+  String draftPrefDietaryPreference = 'Does Not Matter';
   String draftPartnerExpectations = '';
   String draftBio = '';
 
@@ -120,13 +121,14 @@ class ProfileProvider extends ChangeNotifier {
     draftFamilyType = 'Nuclear Family';
     draftFamilyBackground = '';
     draftFamilyValues = 'Moderate';
-    draftPrefAgeMin = 24;
-    draftPrefAgeMax = 28;
+    draftPrefAgeMin = 21;
+    draftPrefAgeMax = 35;
     draftPrefMaritalStatus = 'Never Married';
     draftPrefLocation = 'Any Worldwide Location';
-    draftPrefEducation = 'B.E / B.Tech / Masters';
-    draftPrefOccupation = 'Working Professional';
-    draftPrefIncome = '₹10 Lakhs & above';
+    draftPrefEducation = 'Any Education';
+    draftPrefOccupation = 'Any Working Professional';
+    draftPrefIncome = 'Any Income Range';
+    draftPrefDietaryPreference = 'Does Not Matter';
     draftPartnerExpectations = '';
     draftBio = '';
     _isPublishing = false;
@@ -170,6 +172,7 @@ class ProfileProvider extends ChangeNotifier {
     draftPrefEducation = p.prefEducation;
     draftPrefOccupation = p.prefOccupation;
     draftPrefIncome = p.prefIncome;
+    draftPrefDietaryPreference = p.prefDietaryPreference;
     draftPartnerExpectations = p.partnerExpectations;
     draftBio = p.bio;
     notifyListeners();
@@ -269,6 +272,7 @@ class ProfileProvider extends ChangeNotifier {
         'prefEducation': draftPrefEducation,
         'prefOccupation': draftPrefOccupation,
         'prefIncome': draftPrefIncome,
+        'prefDietaryPreference': draftPrefDietaryPreference,
         'partnerExpectations': draftPartnerExpectations,
         'bio': draftBio,
         'status': 'published',
