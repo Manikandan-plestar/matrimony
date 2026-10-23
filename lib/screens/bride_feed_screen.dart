@@ -42,7 +42,6 @@ class BrideFeedScreen extends StatelessWidget {
     final discovery = context.watch<DiscoveryProvider>();
     final filter = context.watch<SearchFilterProvider>();
     final interaction = context.watch<InteractionProvider>();
-    final subscription = context.watch<SubscriptionProvider>();
 
     // Apply active filters on bride profiles
     final filteredBrides = filter.filterProfiles(discovery.brideProfiles);

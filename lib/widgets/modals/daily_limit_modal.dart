@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
@@ -25,16 +26,16 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
   bool _isPurchasing = false;
   String? _purchasingMethod;
 
-  Future<void> _handleGooglePay() async {
+  Future<void> _handlePlatformPurchase() async {
     setState(() {
       _isPurchasing = true;
-      _purchasingMethod = 'gpay';
+      _purchasingMethod = 'platform';
     });
     final subProvider = context.read<SubscriptionProvider>();
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
 
-    final result = await subProvider.purchaseWithGooglePay();
+    final result = await subProvider.purchasePlatformPayment();
 
     if (mounted) {
       setState(() {
@@ -48,14 +49,18 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
             backgroundColor: const Color(0xFF1F1F1F),
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Color(0xFF34A853), size: 20),
+                Icon(
+                  Platform.isIOS ? Icons.apple : Icons.check_circle_rounded,
+                  color: Platform.isIOS ? Colors.white : const Color(0xFF34A853),
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(child: Text(result.message)),
               ],
             ),
           ),
         );
-      } else {
+      } else if (!result.isCancelled) {
         messenger.showSnackBar(
           SnackBar(
             backgroundColor: AppTheme.error,
@@ -252,12 +257,12 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
           ),
           const SizedBox(height: 22),
 
-          // 1. Google Pay Primary CTA Button
+          // 1. Native Platform Primary CTA Button (Google Pay on Android, Apple IAP on iOS)
           SizedBox(
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: _isPurchasing ? null : _handleGooglePay,
+              onPressed: _isPurchasing ? null : _handlePlatformPurchase,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1F1F1F),
                 foregroundColor: Colors.white,
@@ -267,7 +272,7 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
                 ),
                 elevation: 4,
               ),
-              child: (_isPurchasing && _purchasingMethod == 'gpay')
+              child: (_isPurchasing && _purchasingMethod == 'platform')
                   ? const SizedBox(
                       width: 22,
                       height: 22,
@@ -276,35 +281,48 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Google "G" Badge
-                        Container(
-                          width: 24,
-                          height: 24,
-                          padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
+                        if (Platform.isIOS) ...[
+                          const Icon(Icons.apple, size: 24, color: Colors.white),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Pay with Apple In-App Purchase • ₹499',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
                           ),
-                          child: const Center(
-                            child: Text(
-                              'G',
-                              style: TextStyle(
-                                color: Color(0xFF4285F4),
-                                fontWeight: FontWeight.w900,
-                                fontSize: 15,
+                        ] else ...[
+                          // Google "G" Badge
+                          Container(
+                            width: 24,
+                            height: 24,
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'G',
+                                style: TextStyle(
+                                  color: Color(0xFF4285F4),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Pay with Google Pay • ₹499',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.2,
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Pay with Google Pay • ₹499',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
             ),

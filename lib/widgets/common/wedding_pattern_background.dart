@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Custom background with subtle, elegant wedding line-art doodles (watermark pattern).

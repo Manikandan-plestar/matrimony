@@ -25,6 +25,7 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProfileProvider>().fetchMyProfile();
+      context.read<SubscriptionProvider>().fetchStatus();
     });
   }
 
@@ -33,6 +34,7 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
     final user = context.watch<AuthProvider>().currentUser;
     final myProfile = context.watch<ProfileProvider>().myProfile;
     final interaction = context.watch<InteractionProvider>();
+    final subscription = context.watch<SubscriptionProvider>();
 
     final displayName = (myProfile?.fullName.isNotEmpty ?? false)
         ? myProfile!.fullName
@@ -154,6 +156,112 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
                       ],
                     ),
                   ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // Membership & Discovery Quota Banner
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: subscription.isUnlimited
+                    ? const LinearGradient(
+                        colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : const LinearGradient(
+                        colors: [Color(0xFFF8FAFC), Color(0xFFF1F5F9)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: subscription.isUnlimited
+                      ? AppTheme.gold.withValues(alpha: 0.5)
+                      : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: subscription.isUnlimited
+                              ? AppTheme.gold.withValues(alpha: 0.2)
+                              : AppTheme.burgundy.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          subscription.isUnlimited ? Icons.workspace_premium_rounded : Icons.flash_on_rounded,
+                          color: subscription.isUnlimited ? const Color(0xFFB45309) : AppTheme.burgundy,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              subscription.isUnlimited ? 'Unlimited Discovery Plan' : 'Free Match Discovery',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              subscription.isUnlimited
+                                  ? 'Active • Unlimited profiles & swipes worldwide'
+                                  : '${subscription.swipesRemainingToday} of ${subscription.dailyLimit} daily swipes remaining today',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!subscription.isUnlimited)
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.burgundy,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () => DailyLimitModal.show(context),
+                          child: const Text(
+                            'Upgrade',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (!subscription.isUnlimited) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: subscription.dailyLimit > 0
+                            ? (subscription.swipesUsedToday / subscription.dailyLimit).clamp(0.0, 1.0)
+                            : 0.0,
+                        minHeight: 6,
+                        backgroundColor: Colors.white,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          subscription.swipesRemainingToday <= 2 ? AppTheme.error : AppTheme.burgundy,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

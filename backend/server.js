@@ -2685,14 +2685,15 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
       amount = UNLIMITED_SWIPE_PLAN_PRICE,
       currency = 'INR',
       paymentId,
-      gateway = 'google_pay', // 'google_pay', 'google_play', 'verified_in_app'
+      gateway = 'google_pay', // 'google_pay', 'google_play', 'app_store', 'apple_iap', 'verified_in_app'
       purchaseToken,
+      platform = 'android', // 'android' | 'ios'
       packageName = 'matrimonyer.matrimony.com',
       productId = 'matrimonyer_unlimited_swipes_499'
     } = req.body;
 
     if (!paymentId || typeof paymentId !== 'string' || paymentId.trim().length === 0) {
-      return res.status(400).json({ success: false, message: 'Valid paymentId / Google Order ID is required.' });
+      return res.status(400).json({ success: false, message: 'Valid paymentId / Order ID is required.' });
     }
 
     const cleanPaymentId = paymentId.trim();
@@ -2717,19 +2718,23 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
       await conn.rollback();
       return res.status(409).json({
         success: false,
-        message: 'This payment transaction / Google Order ID has already been credited.'
+        message: 'This payment transaction / Order ID has already been credited.'
       });
     }
 
-    // 2. Verified transaction details with Google Pay attribution
+    // 2. Verified transaction details with platform attribution (Android: Google Pay / iOS: Apple In-App Purchase)
+    const isApplePlatform = platform === 'ios' || gateway === 'app_store' || gateway === 'apple_iap';
+    const effectiveGateway = isApplePlatform ? 'app_store' : (gateway || 'google_pay');
+
     const transactionData = JSON.stringify({
       verifiedAt: new Date().toISOString(),
       planId,
       amount: verifiedAmount,
       currency,
-      gateway,
-      googleOrderId: cleanPaymentId,
-      purchaseToken: purchaseToken || `gpay_tok_${Date.now()}`,
+      platform: isApplePlatform ? 'ios' : 'android',
+      gateway: effectiveGateway,
+      orderId: cleanPaymentId,
+      purchaseToken: purchaseToken || `${effectiveGateway}_tok_${Date.now()}`,
       packageName,
       productId,
       verificationStatus: 'VERIFIED_SUCCESS'
@@ -2739,25 +2744,30 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
       `INSERT INTO mat_user_subscriptions 
        (user_id, plan_type, plan_price, currency, status, payment_id, payment_gateway, transaction_data)
        VALUES (?, 'unlimited_swipes', ?, ?, 'active', ?, ?, ?)`,
-      [userId, verifiedAmount, currency, cleanPaymentId, gateway, transactionData]
+      [userId, verifiedAmount, currency, cleanPaymentId, effectiveGateway, transactionData]
     );
 
     await conn.commit();
 
+    const successMessage = isApplePlatform
+      ? 'Unlimited Swipe Plan activated successfully via Apple In-App Purchase! Enjoy unlimited profile swipes worldwide.'
+      : 'Unlimited Swipe Plan activated successfully via Google Pay! Enjoy unlimited profile swipes worldwide.';
+
     return res.status(200).json({
       success: true,
-      message: 'Unlimited Swipe Plan activated successfully via Google Pay! Enjoy unlimited profile swipes worldwide.',
+      message: successMessage,
       isUnlimited: true,
       planName: 'Unlimited Swipe Plan',
       planPrice: verifiedAmount,
       currency,
-      gateway,
+      gateway: effectiveGateway,
+      platform: isApplePlatform ? 'ios' : 'android',
       orderId: cleanPaymentId,
       swipesRemainingToday: -1
     });
   } catch (err) {
     if (conn) await conn.rollback();
-    console.error('[Subscriptions] Google Pay purchase verification error:', err.message);
+    console.error('[Subscriptions] Purchase verification error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to verify subscription purchase.' });
   } finally {
     if (conn) conn.release();

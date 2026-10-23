@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/matrimony_profile_model.dart';
 import '../models/subscription_model.dart';
+import '../services/in_app_purchase_service.dart';
 import '../services/subscription_service.dart';
 
 /// Provider managing profile swiping quotas, free tier limits, and unlimited subscriptions.
@@ -22,6 +23,10 @@ class SubscriptionProvider extends ChangeNotifier {
   bool get isProcessingSwipe => _isProcessingSwipe;
   bool get isProcessingPurchase => _isProcessingPurchase;
   String? get lastError => _lastError;
+
+  SubscriptionProvider() {
+    InAppPurchaseService.instance.initialize();
+  }
 
   /// Fetch latest quota and plan details from backend
   Future<void> fetchStatus() async {
@@ -156,24 +161,24 @@ class SubscriptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Purchase Unlimited Swipe Plan (₹499) via Google Pay
-  Future<({bool success, String message})> purchaseWithGooglePay() async {
+  /// Purchase Unlimited Swipe Plan (₹499) via Platform Native Method
+  /// (Google Pay on Android, Apple In-App Purchase on iOS)
+  Future<({bool success, String message, bool isCancelled})> purchasePlatformPayment({
+    String? userId,
+    String? userEmail,
+  }) async {
     _isProcessingPurchase = true;
     _lastError = null;
     notifyListeners();
 
     try {
-      // Standard Google Play / Google Pay Order ID format (e.g. GPA.3456-7890-1234-56789)
-      final gpayOrderId = 'GPA.${Random().nextInt(8999) + 1000}-${Random().nextInt(8999) + 1000}-${Random().nextInt(8999) + 1000}-${Random().nextInt(89999) + 10000}';
-      final gpayToken = 'gpay_token_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}';
-
-      final result = await SubscriptionService.verifyGooglePayPurchase(
-        orderId: gpayOrderId,
-        purchaseToken: gpayToken,
-        amount: 499.0,
+      final iapService = InAppPurchaseService();
+      final result = await iapService.buyUnlimitedSwipePlan(
+        userId: userId,
+        userEmail: userEmail,
       );
 
-      if (result.success && result.isUnlimited) {
+      if (result.success) {
         _status = SwipeStatusModel(
           isUnlimited: true,
           planName: 'Unlimited Swipe Plan',
@@ -187,17 +192,31 @@ class SubscriptionProvider extends ChangeNotifier {
           date: _status.date,
         );
         notifyListeners();
-        return (success: true, message: result.message);
+        return (success: true, message: result.message ?? 'Plan activated successfully!', isCancelled: false);
+      } else if (result.isCancelled) {
+        return (success: false, message: result.message ?? 'Payment was cancelled.', isCancelled: true);
       } else {
-        return (success: false, message: result.message);
+        return (success: false, message: result.message ?? 'Payment failed.', isCancelled: false);
       }
     } catch (e) {
       _lastError = e.toString();
-      return (success: false, message: 'Google Pay transaction failed: $e');
+      return (success: false, message: 'Payment error: $e', isCancelled: false);
     } finally {
       _isProcessingPurchase = false;
       notifyListeners();
     }
+  }
+
+  /// Purchase Unlimited Swipe Plan (₹499) via Google Pay (Android)
+  Future<({bool success, String message})> purchaseWithGooglePay() async {
+    final res = await purchasePlatformPayment();
+    return (success: res.success, message: res.message);
+  }
+
+  /// Purchase Unlimited Swipe Plan (₹499) via Apple In-App Purchase (iOS)
+  Future<({bool success, String message})> purchaseWithAppleIap() async {
+    final res = await purchasePlatformPayment();
+    return (success: res.success, message: res.message);
   }
 
   /// Reset provider state upon logout

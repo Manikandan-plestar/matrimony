@@ -51,6 +51,7 @@ class SubscriptionService {
     required String paymentId,
     double amount = 499.0,
     String gateway = 'google_pay',
+    String platform = 'android',
     String? purchaseToken,
   }) async {
     try {
@@ -62,6 +63,7 @@ class SubscriptionService {
           'currency': 'INR',
           'paymentId': paymentId,
           'gateway': gateway,
+          'platform': platform,
           'purchaseToken': purchaseToken,
           'packageName': 'matrimonyer.matrimony.com',
           'productId': 'matrimonyer_unlimited_swipes_499',
@@ -78,7 +80,7 @@ class SubscriptionService {
     }
   }
 
-  /// Specialized Google Pay / Google Play Billing purchase verification
+  /// Specialized Google Pay / Google Play Billing purchase verification for Android
   static Future<({bool success, String message, bool isUnlimited})> verifyGooglePayPurchase({
     required String orderId,
     String? purchaseToken,
@@ -88,6 +90,22 @@ class SubscriptionService {
       paymentId: orderId,
       amount: amount,
       gateway: 'google_pay',
+      platform: 'android',
+      purchaseToken: purchaseToken,
+    );
+  }
+
+  /// Specialized Apple In-App Purchase verification for iOS
+  static Future<({bool success, String message, bool isUnlimited})> verifyAppleIapPurchase({
+    required String transactionId,
+    String? purchaseToken,
+    double amount = 499.0,
+  }) async {
+    return verifyPurchase(
+      paymentId: transactionId,
+      amount: amount,
+      gateway: 'app_store',
+      platform: 'ios',
       purchaseToken: purchaseToken,
     );
   }
