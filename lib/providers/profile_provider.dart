@@ -189,7 +189,10 @@ class ProfileProvider extends ChangeNotifier {
   Future<String> _ensureUploadedPhoto(String pathOrUrl) async {
     final trimmed = pathOrUrl.trim();
     if (trimmed.isEmpty) return '';
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('/uploads/') ||
+        trimmed.startsWith('uploads/')) {
       return trimmed;
     }
     try {
@@ -198,10 +201,13 @@ class ProfileProvider extends ChangeNotifier {
         final uploaded = await ProfileService.uploadProfilePhoto(file);
         if (uploaded != null && uploaded.isNotEmpty) {
           return uploaded;
+        } else {
+          throw Exception('Failed to upload photo to server. Please check your network connection.');
         }
       }
     } catch (e) {
       debugPrint('[ProfileProvider] Failed to upload local photo: $e');
+      rethrow;
     }
     return trimmed;
   }

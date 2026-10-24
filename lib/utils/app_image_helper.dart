@@ -13,6 +13,16 @@ class AppImageHelper {
     if (trimmed.startsWith('/uploads/')) {
       return '${ApiService.baseUrl}$trimmed';
     }
+    if (trimmed.startsWith('uploads/')) {
+      return '${ApiService.baseUrl}/$trimmed';
+    }
+    if (trimmed.contains('/uploads/profiles/')) {
+      final uploadIndex = trimmed.indexOf('/uploads/');
+      if (uploadIndex != -1) {
+        final path = trimmed.substring(uploadIndex);
+        return '${ApiService.baseUrl}$path';
+      }
+    }
     return trimmed;
   }
 

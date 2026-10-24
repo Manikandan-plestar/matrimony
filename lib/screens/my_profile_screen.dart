@@ -80,6 +80,18 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('My Matrimony Profile'),
+        actions: [
+          IconButton(
+            tooltip: 'Edit Details & Photo',
+            icon: const Icon(Icons.edit_rounded),
+            onPressed: () async {
+              await Navigator.pushNamed(context, '/edit-personal-details');
+              if (context.mounted) {
+                context.read<ProfileProvider>().fetchMyProfile();
+              }
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -139,6 +151,37 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                           child: Text(
                             p.gender,
                             style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 12,
+                        right: 12,
+                        child: InkWell(
+                          onTap: () async {
+                            await Navigator.pushNamed(context, '/edit-personal-details');
+                            if (context.mounted) {
+                              context.read<ProfileProvider>().fetchMyProfile();
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.75),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white30),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Change Photo',
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

@@ -54,7 +54,7 @@ const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || '5', 10);
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX_ATTEMPTS || '3', 10);
 const RATE_LIMIT_WINDOW_MIN = parseInt(process.env.RATE_LIMIT_WINDOW_MINUTES || '10', 10);
 
-const ENABLE_TEST_OTP = process.env.ENABLE_TEST_OTP === 'true' || process.env.NODE_ENV !== 'production';
+const ENABLE_TEST_OTP = process.env.ENABLE_TEST_OTP === 'true' && process.env.NODE_ENV !== 'production';
 const TEST_OTP_ALLOWLIST_RAW = process.env.TEST_OTP_ALLOWLIST || '';
 const TEST_OTP_ALLOWLIST = TEST_OTP_ALLOWLIST_RAW.split(',').map(e => e.trim().toLowerCase()).filter(e => e.length > 0);
 const MAX_IMAGE_SIZE_BYTES = parseInt(process.env.MAX_IMAGE_SIZE_MB || '5', 10) * 1024 * 1024;
@@ -401,17 +401,17 @@ async function initDatabase() {
     // Safe migration: ensure status column exists in mat_matches
     try {
       await conn.query(`ALTER TABLE mat_matches ADD COLUMN status VARCHAR(20) DEFAULT 'active'`);
-    } catch (_) {}
+    } catch (_) { }
 
     // Safe migration: ensure uk_email exists on mat_users
     try {
       await conn.query(`ALTER TABLE mat_users ADD UNIQUE KEY uk_email (email)`);
-    } catch (_) {}
+    } catch (_) { }
 
     // Safe migration: ensure pref_dietary_preference exists in mat_profiles
     try {
       await conn.query(`ALTER TABLE mat_profiles ADD COLUMN pref_dietary_preference VARCHAR(50) DEFAULT 'Does Not Matter'`);
-    } catch (_) {}
+    } catch (_) { }
 
     // ---- Table 10: mat_user_subscriptions ----
     await conn.query(`
@@ -639,6 +639,12 @@ const upload = multer({
   limits: { fileSize: MAX_IMAGE_SIZE_BYTES },
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp'];
+
+    if (allowed.includes(file.mimetype) || (file.mimetype === 'application/octet-stream' && allowedExts.includes(ext))) {
+      return cb(null, true);
+    }
     if (!allowed.includes(file.mimetype)) {
       return cb(new Error('Only JPEG, PNG, and WebP images are allowed.'));
     }
@@ -659,25 +665,101 @@ async function saveUploadedImage(buffer, subfolder = 'profiles') {
 }
 
 // ============================================================
-// 7. EXPRESS APP
+// 7. EXPRESS APP & SECURITY HARDENING (Matching Simple ADVT)
 // ============================================================
 const app = express();
 
+// Disable x-powered-by header to prevent server technology fingerprinting
+app.disable('x-powered-by');
+
+// Trust reverse proxy for HTTPS termination (Nginx, Cloudflare, Google Cloud, AWS)
+app.set('trust proxy', 1);
+
+// Security Headers Middleware (Nosniff, clickjacking, HSTS, XSS protection)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// CORS with explicit methods and headers
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-timezone-offset', 'x-client-timezone'],
 }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Sanitize logged paths to prevent logging sensitive query parameters like email/tokens
+app.use((req, res, next) => {
+  const sanitizedPath = (req.path || '/').split('?')[0];
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${sanitizedPath}`);
+  }
+  next();
+});
+
 app.use('/uploads', express.static(UPLOADS_DIR));
+
+// ============================================================
+// 7.1 IN-MEMORY SLIDING-WINDOW IP RATE LIMITER (Simple ADVT Pattern)
+// ============================================================
+const ipRateLimitMap = new Map();
+
+/**
+ * Checks sliding-window rate limit for a given key (e.g. client IP + action).
+ * Capped memory with automatic garbage collection when size exceeds 5,000 entries.
+ */
+function checkIpRateLimit(ipKey, maxRequests = 20, windowMinutes = 10) {
+  const cleanKey = (ipKey || 'unknown').toString();
+  if (cleanKey === '127.0.0.1' || cleanKey === '::1' || cleanKey === 'localhost') {
+    return { isLimited: false, count: 0 };
+  }
+  const now = Date.now();
+  const windowMs = windowMinutes * 60 * 1000;
+  const history = ipRateLimitMap.get(cleanKey) || [];
+  const validHistory = history.filter(ts => now - ts < windowMs);
+
+  if (validHistory.length >= maxRequests) {
+    return { isLimited: true, count: validHistory.length };
+  }
+
+  validHistory.push(now);
+  ipRateLimitMap.set(cleanKey, validHistory);
+
+  if (ipRateLimitMap.size > 5000) {
+    for (const [k, timestamps] of ipRateLimitMap.entries()) {
+      if (timestamps.every(ts => now - ts >= windowMs)) {
+        ipRateLimitMap.delete(k);
+      }
+    }
+  }
+
+  return { isLimited: false, count: validHistory.length };
+}
+
+/**
+ * Safely extracts client IP address accounting for proxies and load balancers.
+ */
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.connection?.remoteAddress || 'unknown';
+}
 
 // ============================================================
 // 8. AUTHENTICATION MIDDLEWARE
 // ============================================================
 
 /**
- * Verifies JWT Bearer token and attaches req.user = { id, email }.
+ * Verifies JWT Bearer token with pinned HS256 algorithm and attaches req.user = { id, email }.
  * All protected routes must use this middleware.
  */
 function authenticateUser(req, res, next) {
@@ -685,9 +767,13 @@ function authenticateUser(req, res, next) {
   if (!authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ success: false, message: 'Authorization token required.' });
   }
-  const token = authHeader.slice(7);
+  const token = authHeader.slice(7).trim();
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    // Pin HMAC SHA-256 algorithm to prevent algorithm confusion attacks
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    if (!payload || !payload.id) {
+      return res.status(401).json({ success: false, message: 'Invalid token payload.' });
+    }
     req.user = { id: payload.id, email: payload.email };
     return next();
   } catch (err) {
@@ -713,7 +799,15 @@ app.get('/api/mat/health', (req, res) => {
  * POST /api/mat/upload/profile-photo
  * Upload and resize profile photo via Multer & Sharp
  */
-app.post('/api/mat/upload/profile-photo', authenticateUser, upload.single('photo'), async (req, res) => {
+app.post('/api/mat/upload/profile-photo', authenticateUser, (req, res, next) => {
+  upload.single('photo')(req, res, (err) => {
+    if (err) {
+      console.error('[Upload] Multer error:', err.message);
+      return res.status(400).json({ success: false, message: err.message || 'Image upload error.' });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({ success: false, message: 'No photo uploaded. Please attach an image under field "photo".' });
@@ -722,6 +816,17 @@ app.post('/api/mat/upload/profile-photo', authenticateUser, upload.single('photo
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const host = req.get('host');
     const fullUrl = `${protocol}://${host}${relativePath}`;
+
+    // Auto-update database so image is immediately visible and persistent
+    if (req.user && req.user.id) {
+      try {
+        await pool.query('UPDATE mat_users SET profile_photo_url = ? WHERE id = ?', [relativePath, req.user.id]);
+        await pool.query('UPDATE mat_profiles SET profile_photo_url = ? WHERE user_id = ?', [relativePath, req.user.id]);
+      } catch (dbErr) {
+        console.warn('[Upload] Failed to auto-update DB with profile photo:', dbErr.message);
+      }
+    }
+
     return res.json({
       success: true,
       url: fullUrl,
@@ -766,7 +871,17 @@ app.post('/api/mat/auth/request-otp', async (req, res) => {
       }
     }
 
-    // Rate limiting: count recent OTP requests
+    // Sliding window IP rate limiting (protects mail server from spam bots)
+    const clientIp = getClientIp(req);
+    const ipCheck = checkIpRateLimit(`otp_send_${clientIp}`, 10, RATE_LIMIT_WINDOW_MIN);
+    if (ipCheck.isLimited) {
+      return res.status(429).json({
+        success: false,
+        message: `Too many verification requests from this network. Please wait ${RATE_LIMIT_WINDOW_MIN} minutes.`
+      });
+    }
+
+    // Rate limiting: count recent OTP requests per email
     const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MIN * 60 * 1000);
     const [recentRows] = await pool.query(
       `SELECT COUNT(*) AS cnt FROM email_otp WHERE email = ? AND created_at >= ? AND is_used = 0`,
@@ -792,7 +907,8 @@ app.post('/api/mat/auth/request-otp', async (req, res) => {
     if (isTestAllowlisted) {
       otp = '123456'; // Fixed test OTP — never use in production
     } else {
-      otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // Cryptographically secure 6-digit random integer (matching Simple ADVT)
+      otp = crypto.randomInt(100000, 1000000).toString();
     }
 
     const otpHash = hashOtp(otp);
@@ -839,6 +955,16 @@ app.post('/api/mat/auth/verify-otp', async (req, res) => {
     }
     if (!/^\d{6}$/.test(otpInput)) {
       return res.status(400).json({ success: false, message: 'OTP must be a 6-digit number.' });
+    }
+
+    // Sliding window IP rate limiting against brute-force OTP guessing
+    const clientIp = getClientIp(req);
+    const ipCheck = checkIpRateLimit(`otp_verify_${clientIp}`, 25, 10);
+    if (ipCheck.isLimited) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many verification attempts from this network. Please wait 10 minutes.'
+      });
     }
 
     const email = normalizeEmail(rawEmail);
@@ -1066,27 +1192,7 @@ app.patch('/api/mat/me', authenticateUser, async (req, res) => {
 });
 
 // ============================================================
-// 12. PROFILE IMAGE UPLOAD
-// ============================================================
-
-/**
- * POST /api/mat/upload/profile-photo
- * Uploads and resizes a profile photo. Returns the URL.
- */
-app.post('/api/mat/upload/profile-photo', authenticateUser, upload.single('photo'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No image file provided.' });
-    }
-    const url = await saveUploadedImage(req.file.buffer, 'profiles');
-    // Build full URL based on request
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    return res.status(200).json({ success: true, url: `${baseUrl}${url}` });
-  } catch (err) {
-    console.error('[Upload] Profile photo error:', err.message);
-    return res.status(500).json({ success: false, message: 'Error uploading image.' });
-  }
-});
+// Profile photo upload route is handled by Section 9 POST /api/mat/upload/profile-photo
 
 // ============================================================
 // 13. PROFILE ROUTES
@@ -1393,6 +1499,13 @@ app.get('/api/mat/profiles', authenticateUser, async (req, res) => {
 
     if (!gender || !['Groom', 'Bride'].includes(gender)) {
       return res.status(400).json({ success: false, message: 'gender must be Groom or Bride.' });
+    }
+
+    // Scraper & bot protection: rate limit discovery requests per network
+    const clientIp = getClientIp(req);
+    const ipCheck = checkIpRateLimit(`discovery_${clientIp}`, 300, 5);
+    if (ipCheck.isLimited) {
+      return res.status(429).json({ success: false, message: 'Too many profile requests. Please slow down.' });
     }
 
     // Get the viewer's own country and preferred location
@@ -2692,11 +2805,28 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
       productId = 'matrimonyer_unlimited_swipes_499'
     } = req.body;
 
+    const clientIp = getClientIp(req);
+    const ipCheck = checkIpRateLimit(`purchase_verify_${clientIp}`, 15, 5);
+    if (ipCheck.isLimited) {
+      return res.status(429).json({ success: false, message: 'Too many purchase verification attempts. Please wait.' });
+    }
+
     if (!paymentId || typeof paymentId !== 'string' || paymentId.trim().length === 0) {
       return res.status(400).json({ success: false, message: 'Valid paymentId / Order ID is required.' });
     }
 
     const cleanPaymentId = paymentId.trim();
+
+    // Security check: in production, strictly block mock or sandbox payment IDs
+    if (process.env.NODE_ENV === 'production') {
+      if (cleanPaymentId.startsWith('sandbox_') || cleanPaymentId.startsWith('test_')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Security error: Sandbox or mock payment tokens are not accepted in production.'
+        });
+      }
+    }
+
     const verifiedAmount = parseFloat(amount);
     if (isNaN(verifiedAmount) || verifiedAmount < UNLIMITED_SWIPE_PLAN_PRICE) {
       return res.status(400).json({
@@ -2777,6 +2907,18 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
 // ============================================================
 // 21. 404 HANDLER
 // ============================================================
+// Global Error Handler
+app.use((err, req, res, next) => {
+  if (err) {
+    console.error('[Server Error]', err.message);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.message || 'An unexpected server error occurred.'
+    });
+  }
+  next();
+});
+
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Endpoint ${req.method} ${req.path} not found.` });
 });

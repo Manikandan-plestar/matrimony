@@ -1,13 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/constants.dart';
 import '../config/theme.dart';
 import '../models/matrimony_profile_model.dart';
+import '../providers/auth_provider.dart';
+import '../providers/discovery_provider.dart';
 import '../providers/profile_provider.dart';
 import '../services/country_code_data.dart';
 import '../services/device_image_picker_service.dart';
 import '../services/location_service.dart';
+import '../services/profile_service.dart';
 import '../utils/app_image_helper.dart';
 import '../widgets/common/country_code_picker_widget.dart';
 import '../widgets/common/searchable_custom_dropdown.dart';
@@ -41,6 +45,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
 
   bool _isFetchingAddress = false;
   bool _isSaving = false;
+  bool _isUploadingPhoto = false;
 
   @override
   void initState() {
@@ -74,12 +79,32 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   }
 
   Widget _buildProfilePhoto() {
-    return AppImageHelper.buildProfileImage(
-      url: _editingPhotoUrl,
-      fullName: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'M',
-      width: 120,
-      height: 120,
-      fit: BoxFit.cover,
+    return Stack(
+      children: [
+        AppImageHelper.buildProfileImage(
+          url: _editingPhotoUrl,
+          fullName: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'M',
+          width: 120,
+          height: 120,
+          fit: BoxFit.cover,
+        ),
+        if (_isUploadingPhoto)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black45,
+              child: const Center(
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -141,7 +166,44 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     if (croppedPath != null && mounted) {
       setState(() {
         _editingPhotoUrl = croppedPath;
+        _isUploadingPhoto = true;
       });
+
+      try {
+        final serverUrl = await ProfileService.uploadProfilePhoto(File(croppedPath));
+        if (serverUrl != null && serverUrl.isNotEmpty && mounted) {
+          setState(() {
+            _editingPhotoUrl = serverUrl;
+          });
+          context.read<AuthProvider>().updateUserProfile(profilePhotoUrl: serverUrl);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: AppTheme.burgundy,
+              content: Text('Profile photo uploaded to server! Remember to save changes.'),
+            ),
+          );
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: AppTheme.error,
+              content: Text('Failed to upload photo to server. Check server connection.'),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppTheme.error,
+              content: Text('Photo upload error: $e'),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isUploadingPhoto = false);
+        }
+      }
     }
   }
 
@@ -217,6 +279,12 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   }
 
   Future<void> _handleSave() async {
+    if (_isUploadingPhoto) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please wait until photo finishes uploading...')),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
@@ -242,6 +310,15 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     setState(() => _isSaving = false);
 
     if (result.success) {
+      context.read<AuthProvider>().updateUserProfile(
+        fullName: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        profilePhotoUrl: _editingPhotoUrl,
+      );
+      final myProfile = context.read<ProfileProvider>().myProfile;
+      if (myProfile != null) {
+        context.read<DiscoveryProvider>().updateProfile(myProfile);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: AppTheme.burgundy,

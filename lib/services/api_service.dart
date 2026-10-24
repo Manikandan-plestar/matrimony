@@ -7,6 +7,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
@@ -14,8 +15,8 @@ class ApiService {
   // Development: 'http://10.0.2.2:5001' (Android emulator → localhost)
   // Device on LAN: 'http://192.168.x.x:5001'
   // Production:  'https://apps.plestarinc.com:3010'
-  // static const String _baseUrl = 'https://apps.plestarinc.com:3010';
-  static const String _baseUrl = 'http://10.0.2.2:5001';
+  static const String _baseUrl = 'https://apps.plestarinc.com:3010';
+  // static const String _baseUrl = 'http://10.0.2.2:5001';
 
   static const String _tokenKey = 'mat_jwt_token';
 
@@ -118,7 +119,23 @@ class ApiService {
     if (token != null) {
       request.headers['Authorization'] = 'Bearer $token';
     }
-    request.files.add(await http.MultipartFile.fromPath(fieldName, file.path));
+
+    // Set correct MIME type so the backend Multer accepts JPEG, PNG, and WebP
+    final lower = file.path.toLowerCase();
+    MediaType contentType;
+    if (lower.endsWith('.png')) {
+      contentType = MediaType('image', 'png');
+    } else if (lower.endsWith('.webp')) {
+      contentType = MediaType('image', 'webp');
+    } else {
+      contentType = MediaType('image', 'jpeg');
+    }
+
+    request.files.add(await http.MultipartFile.fromPath(
+      fieldName,
+      file.path,
+      contentType: contentType,
+    ));
     final streamedResponse = await request.send()
         .timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamedResponse);

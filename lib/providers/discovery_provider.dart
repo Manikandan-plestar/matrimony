@@ -109,6 +109,30 @@ class DiscoveryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Update an existing profile in the discovery feeds (e.g. after photo or details edit)
+  void updateProfile(MatrimonyProfileModel updated) {
+    bool changed = false;
+    _groomProfiles = _groomProfiles.map((p) {
+      if (p.id == updated.id || (p.profileId.isNotEmpty && p.profileId == updated.profileId)) {
+        changed = true;
+        return updated;
+      }
+      return p;
+    }).toList();
+
+    _brideProfiles = _brideProfiles.map((p) {
+      if (p.id == updated.id || (p.profileId.isNotEmpty && p.profileId == updated.profileId)) {
+        changed = true;
+        return updated;
+      }
+      return p;
+    }).toList();
+
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
   void toggleInterestSent(MatrimonyProfileModel profile) {
     profile.isInterestSent = !profile.isInterestSent;
     notifyListeners();

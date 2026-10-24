@@ -1,14 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/constants.dart';
 import '../config/theme.dart';
 import '../config/worldwide_locations.dart';
+import '../providers/auth_provider.dart';
 import '../providers/discovery_provider.dart';
 import '../providers/profile_provider.dart';
 import '../services/country_code_data.dart';
 import '../services/device_image_picker_service.dart';
 import '../services/location_service.dart';
+import '../services/profile_service.dart';
 import '../utils/app_image_helper.dart';
 import '../widgets/common/country_code_picker_widget.dart';
 import '../widgets/common/searchable_custom_dropdown.dart';
@@ -42,6 +45,7 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
 
   late CountryCodeModel _selectedCountry;
   bool _isFetchingAddress = false;
+  bool _isUploadingPhoto = false;
 
   @override
   void initState() {
@@ -85,12 +89,35 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
   }
 
   Widget _buildImagePreviewWidget(String path, {double width = 70, double height = 70, double borderRadius = 12}) {
-    return AppImageHelper.buildProfileImage(
-      url: path,
-      fullName: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'M',
-      width: width,
-      height: height,
-      borderRadius: BorderRadius.circular(borderRadius),
+    return Stack(
+      children: [
+        AppImageHelper.buildProfileImage(
+          url: path,
+          fullName: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'M',
+          width: width,
+          height: height,
+          borderRadius: BorderRadius.circular(borderRadius),
+        ),
+        if (_isUploadingPhoto)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(borderRadius),
+              ),
+              child: const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -200,13 +227,36 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
     if (croppedPath != null && mounted) {
       setState(() {
         p.draftPhotoUrl = croppedPath;
+        _isUploadingPhoto = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: AppTheme.burgundy,
-          content: Text('Profile photograph successfully updated and cropped!'),
-        ),
-      );
+
+      try {
+        final serverUrl = await ProfileService.uploadProfilePhoto(File(croppedPath));
+        if (serverUrl != null && serverUrl.isNotEmpty && mounted) {
+          setState(() {
+            p.draftPhotoUrl = serverUrl;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: AppTheme.burgundy,
+              content: Text('Profile photo uploaded and cropped successfully!'),
+            ),
+          );
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: AppTheme.error,
+              content: Text('Photo cropped locally. It will upload when published.'),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('[PublishWizard] Image upload error: $e');
+      } finally {
+        if (mounted) {
+          setState(() => _isUploadingPhoto = false);
+        }
+      }
     }
   }
 
@@ -1104,6 +1154,11 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
                             if (newProfile != null) {
                               // Insert into discovery feed
                               context.read<DiscoveryProvider>().addNewProfile(newProfile);
+                              context.read<AuthProvider>().updateUserProfile(
+                                hasPublishedProfile: true,
+                                profilePhotoUrl: newProfile.profilePhotoUrl,
+                                fullName: newProfile.fullName,
+                              );
 
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
