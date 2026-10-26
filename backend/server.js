@@ -466,8 +466,189 @@ async function initDatabase() {
     `);
 
     console.log('[Database] All tables initialized/verified successfully.');
+
+    // Seed production test accounts with active premium subscriptions
+    await seedProductionTestAccounts(conn);
   } finally {
     conn.release();
+  }
+}
+
+/**
+ * Seeds and maintains production test accounts for Google Play & Apple App Store reviewers.
+ * Accounts:
+ *   1) plestarinc@gmail.com (Groom) - password/OTP: 123456
+ *   2) test@gmail.com (Bride) - password/OTP: 123456
+ * Both accounts are given active 10-year unlimited subscriptions (unlimited swipes + visitor analytics).
+ */
+async function seedProductionTestAccounts(conn) {
+  try {
+    const testAccounts = [
+      {
+        email: 'plestarinc@gmail.com',
+        fullName: 'Plestar Dev',
+        gender: 'Groom',
+        profileCode: 'MAT-G-PLESTAR',
+        phone: '9876543210',
+        dob: '1995-06-15',
+        age: 30,
+        maritalStatus: 'Never Married',
+        height: '5 ft 11 in (180 cm)',
+        motherTongue: 'Tamil',
+        religion: 'Hindu',
+        community: 'Brahmin - Iyer',
+        dietary: 'Vegetarian',
+        photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop&q=80',
+        education: 'B.Tech / M.S. Software Engineering',
+        occupation: 'Lead Solutions Architect',
+        company: 'Plestar Tech Inc',
+        income: '₹25 - 35 Lakhs P.A.',
+        city: 'Chennai',
+        state: 'Tamil Nadu',
+        locality: 'T. Nagar',
+        bio: 'Technology leader who loves innovation, travel, and traditional music. Seeking an ambitious and caring life partner.'
+      },
+      {
+        email: 'test@gmail.com',
+        fullName: 'Priya Test',
+        gender: 'Bride',
+        profileCode: 'MAT-B-TEST',
+        phone: '9876543211',
+        dob: '1997-09-22',
+        age: 28,
+        maritalStatus: 'Never Married',
+        height: '5 ft 5 in (165 cm)',
+        motherTongue: 'Tamil',
+        religion: 'Hindu',
+        community: 'Mudaliar',
+        dietary: 'Vegetarian',
+        photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80',
+        education: 'M.Des / B.Arch Design & Architecture',
+        occupation: 'Senior Product Designer',
+        company: 'Design & Creative Studio',
+        income: '₹18 - 25 Lakhs P.A.',
+        city: 'Chennai',
+        state: 'Tamil Nadu',
+        locality: 'Adyar',
+        bio: 'Passionate about creative arts, nature, and architecture. Looking for a respectful, understanding life partner.'
+      }
+    ];
+
+    for (const acc of testAccounts) {
+      // 1. Ensure user exists
+      let [users] = await conn.query('SELECT id FROM mat_users WHERE LOWER(TRIM(email)) = ?', [acc.email]);
+      let userId;
+      if (!users.length) {
+        const [uRes] = await conn.query(
+          `INSERT INTO mat_users (email, full_name, country_code, mobile_number, profile_photo_url, has_published_profile)
+           VALUES (?, ?, '+91', ?, ?, 1)`,
+          [acc.email, acc.fullName, acc.phone, acc.photo]
+        );
+        userId = uRes.insertId;
+      } else {
+        userId = users[0].id;
+        await conn.query(
+          `UPDATE mat_users SET full_name = ?, profile_photo_url = ?, has_published_profile = 1 WHERE id = ?`,
+          [acc.fullName, acc.photo, userId]
+        );
+      }
+
+      // 2. Ensure published profile exists
+      let [profs] = await conn.query('SELECT id FROM mat_profiles WHERE user_id = ?', [userId]);
+      let profileId;
+      if (!profs.length) {
+        const [pRes] = await conn.query(
+          `INSERT INTO mat_profiles
+            (user_id, profile_code, created_for, full_name, gender, date_of_birth, age,
+             marital_status, height, mother_tongue, religion, community, dietary_preference,
+             profile_photo_url, country_code, phone, address, highest_education, occupation,
+             company, annual_income, country, state, city, locality,
+             family_type, family_background, family_values,
+             pref_age_min, pref_age_max, pref_marital_status, pref_location, pref_education, pref_occupation,
+             partner_expectations, bio, is_verified, is_premium, compatibility_score, status)
+           VALUES
+            (?, ?, 'Self', ?, ?, ?, ?,
+             ?, ?, ?, ?, ?, ?,
+             ?, '+91', ?, ?, ?, ?,
+             ?, ?, 'India', ?, ?, ?,
+             'Nuclear Family', 'Respectable and culturally grounded family with deep values.', 'Moderate',
+             21, 35, 'Never Married', 'Any Worldwide Location', 'Graduate / Professional', 'Professional / Tech',
+             'Looking for a compatible, understanding, and kind-hearted life partner.', ?, 1, 1, 95, 'published')`,
+          [
+            userId, acc.profileCode, acc.fullName, acc.gender, acc.dob, acc.age,
+            acc.maritalStatus, acc.height, acc.motherTongue, acc.religion, acc.community, acc.dietary,
+            acc.photo, `+91 ${acc.phone}`, `${acc.locality}, ${acc.city}`, acc.education, acc.occupation,
+            acc.company, acc.income, acc.state, acc.city, acc.locality,
+            acc.bio
+          ]
+        );
+        profileId = pRes.insertId;
+        await conn.query('UPDATE mat_users SET active_profile_id = ? WHERE id = ?', [profileId, userId]);
+      } else {
+        profileId = profs[0].id;
+        await conn.query(
+          `UPDATE mat_profiles SET
+             status = 'published', is_verified = 1, is_premium = 1, compatibility_score = 95,
+             full_name = ?, profile_photo_url = ?
+           WHERE id = ?`,
+          [acc.fullName, acc.photo, profileId]
+        );
+        await conn.query('UPDATE mat_users SET active_profile_id = ? WHERE id = ?', [profileId, userId]);
+      }
+
+      // 3. Ensure active unlimited subscription (10 years validity so it never expires during production/testing)
+      const [existingSub] = await conn.query('SELECT id FROM mat_user_subscriptions WHERE user_id = ?', [userId]);
+      if (!existingSub.length) {
+        await conn.query(
+          `INSERT INTO mat_user_subscriptions 
+             (user_id, plan_type, plan_price, currency, status, payment_id, payment_gateway, transaction_data, starts_at, expires_at)
+           VALUES 
+             (?, 'unlimited_swipes', 499.00, 'INR', 'active', ?, 'google_play', '{"isTestAccount": true, "unlimited": true}', NOW(), DATE_ADD(NOW(), INTERVAL 10 YEAR))`,
+          [userId, `TEST_SUB_PROD_${acc.email}`]
+        );
+      } else {
+        await conn.query(
+          `UPDATE mat_user_subscriptions 
+           SET status = 'active', plan_price = 499.00, expires_at = DATE_ADD(NOW(), INTERVAL 10 YEAR) 
+           WHERE user_id = ?`,
+          [userId]
+        );
+      }
+    }
+
+    // 4. Seed sample profile views for both test accounts across the current week
+    // so Profile Visitors & Weekly Analytics displays live charts and visitor items immediately!
+    const [allTestProfs] = await conn.query(
+      `SELECT p.id, p.gender, p.user_id FROM mat_profiles p
+       INNER JOIN mat_users u ON u.id = p.user_id
+       WHERE u.email IN ('plestarinc@gmail.com', 'test@gmail.com')`
+    );
+
+    const [dummyViewers] = await conn.query(
+      `SELECT u.id AS viewer_user_id FROM mat_users u
+       INNER JOIN mat_profiles p ON p.user_id = u.id
+       WHERE u.email NOT IN ('plestarinc@gmail.com', 'test@gmail.com') AND p.status = 'published'
+       LIMIT 6`
+    );
+
+    if (dummyViewers.length > 0) {
+      for (const prof of allTestProfs) {
+        for (let i = 0; i < Math.min(dummyViewers.length, 5); i++) {
+          const viewerId = dummyViewers[i].viewer_user_id;
+          const dayOffset = i; // past days
+          await conn.query(
+            `INSERT INTO mat_profile_views (profile_id, viewer_user_id, view_date, total_views, last_viewed_at)
+             VALUES (?, ?, DATE_SUB(CURDATE(), INTERVAL ? DAY), ?, DATE_SUB(NOW(), INTERVAL ? DAY))
+             ON DUPLICATE KEY UPDATE total_views = total_views + 1`,
+            [prof.id, viewerId, dayOffset, i + 1, dayOffset]
+          );
+        }
+      }
+    }
+
+    console.log('[Database] Seeded 2 production test accounts (plestarinc@gmail.com, test@gmail.com) with active premium unlimited plans.');
+  } catch (err) {
+    console.error('[Database] Error seeding test accounts:', err.message);
   }
 }
 
@@ -900,13 +1081,14 @@ app.post('/api/mat/auth/request-otp', async (req, res) => {
 
     // Generate and store OTP
     let otp;
-    const isTestAllowlisted = ENABLE_TEST_OTP && (
+    const isProductionTestAccount = email === 'plestarinc@gmail.com' || email === 'test@gmail.com';
+    const isTestAllowlisted = isProductionTestAccount || (ENABLE_TEST_OTP && (
       TEST_OTP_ALLOWLIST.includes(email) ||
       email === 'test1@gmail.com' ||
       email === 'test2@gmail.com'
-    );
+    ));
     if (isTestAllowlisted) {
-      otp = '123456'; // Fixed test OTP — never use in production
+      otp = '123456'; // Fixed test code for Google/Apple reviewers & testing
     } else {
       // Cryptographically secure 6-digit random integer (matching Simple ADVT)
       otp = crypto.randomInt(100000, 1000000).toString();
@@ -971,52 +1153,59 @@ app.post('/api/mat/auth/verify-otp', async (req, res) => {
     const email = normalizeEmail(rawEmail);
     const otpHash = hashOtp(otpInput);
 
-    // Find valid OTP record
-    const [otpRows] = await pool.query(
-      `SELECT id, attempts, expires_at, is_used
-       FROM email_otp
-       WHERE email = ? AND is_used = 0
-       ORDER BY created_at DESC LIMIT 1`,
-      [email]
-    );
+    const isProductionTestAccount = (email === 'plestarinc@gmail.com' || email === 'test@gmail.com') && otpInput === '123456';
 
-    if (!otpRows.length) {
-      return res.status(400).json({ success: false, message: 'No pending verification found. Please request a new code.' });
-    }
+    if (!isProductionTestAccount) {
+      // Find valid OTP record
+      const [otpRows] = await pool.query(
+        `SELECT id, attempts, expires_at, is_used
+         FROM email_otp
+         WHERE email = ? AND is_used = 0
+         ORDER BY created_at DESC LIMIT 1`,
+        [email]
+      );
 
-    const otpRecord = otpRows[0];
+      if (!otpRows.length) {
+        return res.status(400).json({ success: false, message: 'No pending verification found. Please request a new code.' });
+      }
 
-    if (new Date() > new Date(otpRecord.expires_at)) {
+      const otpRecord = otpRows[0];
+
+      if (new Date() > new Date(otpRecord.expires_at)) {
+        await pool.query('UPDATE email_otp SET is_used = 1 WHERE id = ?', [otpRecord.id]);
+        return res.status(400).json({ success: false, message: 'Verification code has expired. Please request a new one.' });
+      }
+
+      if (otpRecord.attempts >= 5) {
+        await pool.query('UPDATE email_otp SET is_used = 1 WHERE id = ?', [otpRecord.id]);
+        return res.status(429).json({ success: false, message: 'Too many failed attempts. Please request a new code.' });
+      }
+
+      // Increment attempt before hash check (timing-safe)
+      await pool.query('UPDATE email_otp SET attempts = attempts + 1 WHERE id = ?', [otpRecord.id]);
+
+      // Timing-safe hash comparison
+      const [validRow] = await pool.query(
+        `SELECT id FROM email_otp WHERE id = ? AND otp_hash = ?`,
+        [otpRecord.id, otpHash]
+      );
+
+      if (!validRow.length) {
+        const remaining = 5 - (otpRecord.attempts + 1);
+        return res.status(400).json({
+          success: false,
+          message: remaining > 0
+            ? `Incorrect code. ${remaining} attempt(s) remaining.`
+            : 'Incorrect code. No attempts remaining. Please request a new code.'
+        });
+      }
+
+      // Mark OTP as used
       await pool.query('UPDATE email_otp SET is_used = 1 WHERE id = ?', [otpRecord.id]);
-      return res.status(400).json({ success: false, message: 'Verification code has expired. Please request a new one.' });
+    } else {
+      // Mark any existing unused OTP as used for this test account
+      await pool.query('UPDATE email_otp SET is_used = 1 WHERE email = ? AND is_used = 0', [email]);
     }
-
-    if (otpRecord.attempts >= 5) {
-      await pool.query('UPDATE email_otp SET is_used = 1 WHERE id = ?', [otpRecord.id]);
-      return res.status(429).json({ success: false, message: 'Too many failed attempts. Please request a new code.' });
-    }
-
-    // Increment attempt before hash check (timing-safe)
-    await pool.query('UPDATE email_otp SET attempts = attempts + 1 WHERE id = ?', [otpRecord.id]);
-
-    // Timing-safe hash comparison
-    const [validRow] = await pool.query(
-      `SELECT id FROM email_otp WHERE id = ? AND otp_hash = ?`,
-      [otpRecord.id, otpHash]
-    );
-
-    if (!validRow.length) {
-      const remaining = 5 - (otpRecord.attempts + 1);
-      return res.status(400).json({
-        success: false,
-        message: remaining > 0
-          ? `Incorrect code. ${remaining} attempt(s) remaining.`
-          : 'Incorrect code. No attempts remaining. Please request a new code.'
-      });
-    }
-
-    // Mark OTP as used
-    await pool.query('UPDATE email_otp SET is_used = 1 WHERE id = ?', [otpRecord.id]);
 
     // Lookup existing user with case-insensitive normalized email
     let [userRows] = await pool.query('SELECT * FROM mat_users WHERE LOWER(TRIM(email)) = ?', [email]);
