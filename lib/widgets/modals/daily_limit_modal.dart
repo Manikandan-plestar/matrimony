@@ -71,47 +71,6 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
     }
   }
 
-  Future<void> _handleSubscribe() async {
-    setState(() {
-      _isPurchasing = true;
-      _purchasingMethod = 'standard';
-    });
-    final subProvider = context.read<SubscriptionProvider>();
-    final messenger = ScaffoldMessenger.of(context);
-    final nav = Navigator.of(context);
-
-    final result = await subProvider.purchaseUnlimitedPlan();
-
-    if (mounted) {
-      setState(() {
-        _isPurchasing = false;
-        _purchasingMethod = null;
-      });
-      if (result.success) {
-        nav.pop();
-        messenger.showSnackBar(
-          SnackBar(
-            backgroundColor: AppTheme.burgundy,
-            content: Row(
-              children: [
-                const Icon(Icons.stars_rounded, color: AppTheme.gold, size: 20),
-                const SizedBox(width: 8),
-                Expanded(child: Text(result.message)),
-              ],
-            ),
-          ),
-        );
-      } else {
-        messenger.showSnackBar(
-          SnackBar(
-            backgroundColor: AppTheme.error,
-            content: Text(result.message),
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -222,7 +181,7 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
                         ),
                         SizedBox(height: 3),
                         Text(
-                          'One-time upgrade • Never resets',
+                          '1 Year Access • 365 Days Validity',
                           style: TextStyle(fontSize: 12, color: Color(0xFFC2410C)),
                         ),
                       ],
@@ -247,20 +206,20 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
                 const SizedBox(height: 14),
                 const Divider(color: Color(0xFFFED7AA), height: 1),
                 const SizedBox(height: 14),
-                _buildBenefitRow(Icons.all_inclusive_rounded, 'Swipe unlimited profiles without a daily limit.'),
+                _buildBenefitRow(Icons.all_inclusive_rounded, 'Swipe unlimited profiles without any daily limit.'),
                 const SizedBox(height: 8),
-                _buildBenefitRow(Icons.sync_alt_rounded, 'Applies across both Groom and Bride discovery feeds.'),
+                _buildBenefitRow(Icons.visibility_rounded, 'Access Profile Visitors & weekly analytics chart.'),
                 const SizedBox(height: 8),
-                _buildBenefitRow(Icons.check_circle_outline_rounded, 'Persists across logout, login, and app reinstalls.'),
+                _buildBenefitRow(Icons.sync_alt_rounded, 'Applies across Groom and Bride discovery feeds for 1 year.'),
               ],
             ),
           ),
           const SizedBox(height: 22),
 
-          // 1. Native Platform Primary CTA Button (Google Pay on Android, Apple IAP on iOS)
+          // Native Platform Primary CTA Button (Google Pay on Android, Apple IAP on iOS)
           SizedBox(
             width: double.infinity,
-            height: 52,
+            height: 54,
             child: ElevatedButton(
               onPressed: _isPurchasing ? null : _handlePlatformPurchase,
               style: ElevatedButton.styleFrom(
@@ -327,38 +286,7 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
                     ),
             ),
           ),
-          const SizedBox(height: 10),
-
-          // 2. Alternative Payment Methods (UPI / Card / NetBanking)
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: OutlinedButton(
-              onPressed: _isPurchasing ? null : _handleSubscribe,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.burgundy,
-                side: const BorderSide(color: AppTheme.burgundy, width: 1.2),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: (_isPurchasing && _purchasingMethod == 'standard')
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.burgundy),
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.credit_card_rounded, size: 18),
-                        SizedBox(width: 8),
-                        Text(
-                          'Other Payment Options (UPI / Card)',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
+          const SizedBox(height: 12),
           const SizedBox(height: 8),
 
           // Secondary Maybe Later

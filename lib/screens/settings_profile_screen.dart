@@ -321,26 +321,29 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
               _buildMenuItem(
                 icon: Icons.visibility_outlined,
                 title: 'Profile Visitors',
-                subtitle: '${interaction.visitors.length} people viewed your profile',
+                subtitle: subscription.isUnlimited
+                    ? '${interaction.visitors.length} people viewed your profile'
+                    : 'Unlock with ₹499 (1 Year Plan)',
+                badgeText: subscription.isUnlimited ? null : 'PRO',
                 onTap: () => Navigator.pushNamed(context, '/visitors'),
               ),
             ]),
 
             const SizedBox(height: 18),
 
-            // 4. Group: Privacy, Settings & Support
-            _buildGroupHeader('Settings & Support'),
+            // 4. Group: Support
+            _buildGroupHeader('Support'),
             _buildMenuGroup([
-              _buildMenuItem(
-                icon: Icons.lock_outline_rounded,
-                title: 'Privacy & Visibility Settings',
-                onTap: () => Navigator.pushNamed(context, '/privacy-settings'),
-              ),
-              _buildMenuItem(
-                icon: Icons.notifications_none_rounded,
-                title: 'Notification Preferences',
-                onTap: () => Navigator.pushNamed(context, '/notification-settings'),
-              ),
+              // _buildMenuItem(
+              //   icon: Icons.lock_outline_rounded,
+              //   title: 'Privacy & Visibility Settings',
+              //   onTap: () => Navigator.pushNamed(context, '/privacy-settings'),
+              // ),
+              // _buildMenuItem(
+              //   icon: Icons.notifications_none_rounded,
+              //   title: 'Notification Preferences',
+              //   onTap: () => Navigator.pushNamed(context, '/notification-settings'),
+              // ),
               _buildMenuItem(
                 icon: Icons.help_outline_rounded,
                 title: 'Help & Customer Support',

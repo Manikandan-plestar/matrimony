@@ -411,41 +411,56 @@ class _ProfileDetailsModalState extends State<ProfileDetailsModal> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                       )
-                    : ElevatedButton.icon(
-                        onPressed: (p.isInterestSent || isAuthorized)
-                            ? null
-                            : () {
-                                widget.onExpressInterest();
-                                setState(() {
-                                  p.isInterestSent = true;
-                                });
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isAuthorized
-                              ? const Color(0xFF0D9488)
-                              : p.isInterestSent
-                                  ? AppTheme.textMuted
-                                  : AppTheme.burgundy,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        icon: Icon(
-                          isAuthorized
-                              ? Icons.verified_user_rounded
-                              : p.isInterestSent
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                          size: 20,
-                        ),
-                        label: Text(
-                          isAuthorized
-                              ? 'Mutual Match (Full Details Unlocked)'
-                              : p.isInterestSent
-                                  ? 'Interest Sent (Pending Acceptance)'
-                                  : 'Express Interest to Connect',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
+                    : Builder(
+                        builder: (ctx) {
+                          final isConn = isAuthorized || interaction.isConnected(p.id);
+                          final isPend = interaction.isInterestSentOrPending(p.id);
+                          final hasInc = interaction.hasIncomingRequest(p.id);
+                          final isDisabled = isConn || isPend || hasInc;
+
+                          if (!isPend && !isConn && p.isInterestSent) {
+                            p.isInterestSent = false;
+                          }
+
+                          return ElevatedButton.icon(
+                            onPressed: isDisabled
+                                ? null
+                                : () {
+                                    widget.onExpressInterest();
+                                    setState(() {
+                                      p.isInterestSent = true;
+                                    });
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isConn
+                                  ? const Color(0xFF0D9488)
+                                  : isDisabled
+                                      ? AppTheme.textMuted
+                                      : AppTheme.burgundy,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            icon: Icon(
+                              isConn
+                                  ? Icons.verified_user_rounded
+                                  : isDisabled
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                              size: 20,
+                            ),
+                            label: Text(
+                              isConn
+                                  ? 'Mutual Match (Full Details Unlocked)'
+                                  : isPend
+                                      ? 'Interest Sent (Pending Acceptance)'
+                                      : hasInc
+                                          ? 'Request Received (Check Requests)'
+                                          : 'Express Interest to Connect',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                          );
+                        },
                       ),
               ),
             ),

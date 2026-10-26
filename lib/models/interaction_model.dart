@@ -40,6 +40,59 @@ class MatchItem {
   });
 }
 
+class WeeklyChartDayModel {
+  final String date; // 'YYYY-MM-DD'
+  final String dayName; // 'Sun', 'Mon', 'Tue', etc.
+  final int views;
+
+  const WeeklyChartDayModel({
+    required this.date,
+    required this.dayName,
+    required this.views,
+  });
+
+  factory WeeklyChartDayModel.fromJson(Map<String, dynamic> json) =>
+      WeeklyChartDayModel(
+        date: json['date'] as String? ?? '',
+        dayName: json['dayName'] as String? ?? json['day'] as String? ?? '',
+        views: (json['views'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class WeeklyChartDataModel {
+  final String startDate;
+  final String endDate;
+  final int totalViews;
+  final List<WeeklyChartDayModel> days;
+
+  const WeeklyChartDataModel({
+    required this.startDate,
+    required this.endDate,
+    required this.totalViews,
+    required this.days,
+  });
+
+  factory WeeklyChartDataModel.empty() => const WeeklyChartDataModel(
+        startDate: '',
+        endDate: '',
+        totalViews: 0,
+        days: [],
+      );
+
+  factory WeeklyChartDataModel.fromJson(Map<String, dynamic> json) {
+    final rawDays = json['days'] as List? ?? [];
+    return WeeklyChartDataModel(
+      startDate: json['startDate'] as String? ?? '',
+      endDate: json['endDate'] as String? ?? '',
+      totalViews: (json['totalViews'] as num?)?.toInt() ?? 0,
+      days: rawDays
+          .whereType<Map<String, dynamic>>()
+          .map(WeeklyChartDayModel.fromJson)
+          .toList(),
+    );
+  }
+}
+
 class AnalyticsPeriodStats {
   final int views;
   final int saves;
@@ -62,6 +115,7 @@ class ProfileAnalyticsModel {
   final AnalyticsPeriodStats daily;
   final AnalyticsPeriodStats weekly;
   final AnalyticsPeriodStats monthly;
+  final WeeklyChartDataModel? weeklyChart;
 
   const ProfileAnalyticsModel({
     required this.totalViews,
@@ -72,6 +126,7 @@ class ProfileAnalyticsModel {
     required this.daily,
     required this.weekly,
     required this.monthly,
+    this.weeklyChart,
   });
 
   factory ProfileAnalyticsModel.empty() => const ProfileAnalyticsModel(
@@ -79,14 +134,16 @@ class ProfileAnalyticsModel {
     totalSaves: 0,
     periodViews: 0,
     periodSaves: 0,
-    currentPeriod: 'day',
+    currentPeriod: 'week',
     daily: AnalyticsPeriodStats(views: 0, saves: 0),
     weekly: AnalyticsPeriodStats(views: 0, saves: 0),
     monthly: AnalyticsPeriodStats(views: 0, saves: 0),
+    weeklyChart: null,
   );
 
   factory ProfileAnalyticsModel.fromJson(Map<String, dynamic> json, String period) {
     final a = json['analytics'] as Map<String, dynamic>? ?? json;
+    final chartRaw = json['weeklyChart'] as Map<String, dynamic>? ?? a['weeklyChart'] as Map<String, dynamic>?;
     return ProfileAnalyticsModel(
       totalViews: (a['totalViews'] as num?)?.toInt() ?? 0,
       totalSaves: (a['totalSaves'] as num?)?.toInt() ?? 0,
@@ -96,6 +153,7 @@ class ProfileAnalyticsModel {
       daily: AnalyticsPeriodStats.fromJson(a['daily'] as Map<String, dynamic>? ?? {}),
       weekly: AnalyticsPeriodStats.fromJson(a['weekly'] as Map<String, dynamic>? ?? {}),
       monthly: AnalyticsPeriodStats.fromJson(a['monthly'] as Map<String, dynamic>? ?? {}),
+      weeklyChart: chartRaw != null ? WeeklyChartDataModel.fromJson(chartRaw) : null,
     );
   }
 }
@@ -105,12 +163,14 @@ class VisitorItem {
   final String id;
   final MatrimonyProfileModel profile;
   final DateTime visitedAt;
+  final String viewDate;
   final int visitCount;
 
   VisitorItem({
     required this.id,
     required this.profile,
     required this.visitedAt,
+    this.viewDate = '',
     this.visitCount = 1,
   });
 }

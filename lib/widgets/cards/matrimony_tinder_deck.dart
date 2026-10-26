@@ -107,7 +107,7 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
     final vx = details.velocity.pixelsPerSecond.dx;
 
     if (_dragOffset.dx < -threshold || vx < -450) {
-      // Swiped Left: Pass -> Next Profile
+      // Swiped Right-to-Left (Dragged Left): Pass -> Next Profile
       if (widget.profiles.isNotEmpty) {
         final profile = widget.profiles[_currentIndex];
         if (widget.onSwipe != null) {
@@ -124,20 +124,10 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
         _animateBackToCenter();
       }
     } else if (_dragOffset.dx > threshold || vx > 450) {
-      // Swiped Right: Express Interest!
-      if (widget.profiles.isNotEmpty) {
-        final profile = widget.profiles[_currentIndex];
-        if (widget.onSwipe != null) {
-          final allowed = await widget.onSwipe!(profile, 'interest');
-          if (!allowed) {
-            _animateBackToCenter();
-            return;
-          }
-        }
-        widget.onExpressInterest(profile);
-      }
+      // Swiped Left-to-Right (Dragged Right): Show Previous Profile!
+      // Do NOT send interest request (only heart icon tap sends interest)
       if (widget.profiles.length > 1) {
-        _animateSwipe(const Offset(650, 0), 0.32, isNext: true);
+        _animateSwipe(const Offset(650, 0), 0.32, isNext: false);
       } else {
         _animateBackToCenter();
       }
@@ -237,17 +227,21 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
     }
 
     final topProfile = widget.profiles[_currentIndex % widget.profiles.length];
+    final prevProfile = widget.profiles.length > 1
+        ? widget.profiles[(_currentIndex - 1 + widget.profiles.length) % widget.profiles.length]
+        : null;
     final nextProfile = widget.profiles.length > 1
         ? widget.profiles[(_currentIndex + 1) % widget.profiles.length]
         : null;
+    final behindProfile = _dragOffset.dx > 0 ? prevProfile : nextProfile;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // 1. Next card behind (subtle scale 0.95 & slight offset)
-          if (nextProfile != null)
+          // 1. Next / Previous card behind (subtle scale 0.94 & slight offset)
+          if (behindProfile != null)
             Transform.translate(
               offset: const Offset(0, 16),
               child: Transform.scale(
@@ -255,7 +249,7 @@ class _MatrimonyTinderDeckState extends State<MatrimonyTinderDeck>
                 child: Opacity(
                   opacity: 0.65,
                   child: MatrimonyCardView(
-                    profile: nextProfile,
+                    profile: behindProfile,
                     onPass: () {},
                     onSave: () {},
                     onInterest: () {},

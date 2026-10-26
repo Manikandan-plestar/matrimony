@@ -35,6 +35,12 @@ class _InterestsScreenState extends State<InterestsScreen> with SingleTickerProv
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<InteractionProvider>().fetchAll();
+      }
+    });
   }
 
   @override
@@ -384,13 +390,25 @@ class _InterestsScreenState extends State<InterestsScreen> with SingleTickerProv
               controller: _tabController,
               children: [
                 // Tab 0: Sent
-                _buildSentList(interaction),
+                RefreshIndicator(
+                  color: AppTheme.burgundy,
+                  onRefresh: () => interaction.fetchAll(),
+                  child: _buildSentList(interaction),
+                ),
 
                 // Tab 1: Connection
-                _buildConnectionList(interaction),
+                RefreshIndicator(
+                  color: AppTheme.burgundy,
+                  onRefresh: () => interaction.fetchAll(),
+                  child: _buildConnectionList(interaction),
+                ),
 
                 // Tab 2: Request
-                _buildRequestList(interaction),
+                RefreshIndicator(
+                  color: AppTheme.burgundy,
+                  onRefresh: () => interaction.fetchAll(),
+                  child: _buildRequestList(interaction),
+                ),
               ],
             ),
           ),

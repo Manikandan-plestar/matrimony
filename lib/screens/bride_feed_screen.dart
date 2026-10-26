@@ -24,14 +24,39 @@ class BrideFeedScreen extends StatelessWidget {
         onToggleSave: () {
           context.read<InteractionProvider>().toggleSaveProfile(profile);
         },
-        onExpressInterest: () {
-          context.read<InteractionProvider>().expressInterest(profile);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: AppTheme.burgundy,
-              content: Text('Interest expressed in ${profile.fullName}!'),
-            ),
-          );
+        onExpressInterest: () async {
+          final inter = context.read<InteractionProvider>();
+          if (inter.isConnected(profile.id)) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: AppTheme.burgundy,
+                content: Text('You are already connected with ${profile.fullName}.'),
+              ),
+            );
+            return;
+          }
+          if (inter.isInterestSentOrPending(profile.id)) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: AppTheme.burgundy,
+                content: Text('Interest request already sent to ${profile.fullName}.'),
+              ),
+            );
+            return;
+          }
+          final res = await inter.expressInterest(profile);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: res.success ? AppTheme.burgundy : AppTheme.error,
+                content: Text(res.message.isNotEmpty
+                    ? res.message
+                    : (res.success
+                        ? 'Interest expressed in ${profile.fullName}!'
+                        : 'Could not send interest.')),
+              ),
+            );
+          }
         },
       ),
     );
@@ -84,10 +109,44 @@ class BrideFeedScreen extends StatelessWidget {
             ),
 
           // Main Swipe Deck
+          Builder(
+            builder: (_) {
+              for (final p in filteredBrides) {
+                final isPending = interaction.isInterestSentOrPending(p.id);
+                final isConn = interaction.isConnected(p.id);
+                if (!isPending && !isConn && p.isInterestSent) {
+                  p.isInterestSent = false;
+                } else if ((isPending || isConn) && !p.isInterestSent) {
+                  p.isInterestSent = true;
+                }
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           Expanded(
             child: MatrimonyTinderDeck(
               profiles: filteredBrides,
               onSwipe: (p, action) async {
+                if (action == 'interest') {
+                  if (interaction.isConnected(p.id)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: AppTheme.burgundy,
+                        content: Text('You are already connected with ${p.fullName}.'),
+                      ),
+                    );
+                    return false;
+                  }
+                  if (interaction.isInterestSentOrPending(p.id)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: AppTheme.burgundy,
+                        content: Text('Interest request already sent to ${p.fullName}.'),
+                      ),
+                    );
+                    return false;
+                  }
+                }
                 final subProvider = context.read<SubscriptionProvider>();
                 if (!subProvider.canAttemptSwipe()) {
                   DailyLimitModal.show(context);
@@ -117,14 +176,38 @@ class BrideFeedScreen extends StatelessWidget {
                   ),
                 );
               },
-              onExpressInterest: (p) {
-                interaction.expressInterest(p);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: AppTheme.burgundy,
-                    content: Text('Interest expressed in ${p.fullName}! ❤️'),
-                  ),
-                );
+              onExpressInterest: (p) async {
+                if (interaction.isConnected(p.id)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: AppTheme.burgundy,
+                      content: Text('You are already connected with ${p.fullName}.'),
+                    ),
+                  );
+                  return;
+                }
+                if (interaction.isInterestSentOrPending(p.id)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: AppTheme.burgundy,
+                      content: Text('Interest request already sent to ${p.fullName}.'),
+                    ),
+                  );
+                  return;
+                }
+                final res = await interaction.expressInterest(p);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: res.success ? AppTheme.burgundy : AppTheme.error,
+                      content: Text(res.message.isNotEmpty
+                          ? res.message
+                          : (res.success
+                              ? 'Interest expressed in ${p.fullName}! ❤️'
+                              : 'Could not send interest.')),
+                    ),
+                  );
+                }
               },
               onViewDetails: (p) => _openDetails(context, p),
               onReset: () => filter.clearAllFilters(),

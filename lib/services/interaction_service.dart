@@ -150,8 +150,23 @@ class InteractionService {
 
   // ─── Visitors & Analytics ──────────────────────────────────────────────────
 
-  static Future<List<VisitorItem>> fetchVisitors() async {
-    final result = await ApiService.get('/api/mat/visitors');
+  static Future<List<VisitorItem>> fetchVisitors({
+    String? startDate,
+    String? endDate,
+    String? date,
+  }) async {
+    final queryParams = <String, String>{};
+    if (date != null && date.isNotEmpty) {
+      queryParams['date'] = date;
+    } else {
+      if (startDate != null && startDate.isNotEmpty) queryParams['startDate'] = startDate;
+      if (endDate != null && endDate.isNotEmpty) queryParams['endDate'] = endDate;
+    }
+
+    final result = await ApiService.get(
+      '/api/mat/visitors',
+      queryParams: queryParams.isNotEmpty ? queryParams : null,
+    );
     if (result['success'] != true) return [];
     final list = result['visitors'];
     if (list is! List) return [];
@@ -164,6 +179,7 @@ class InteractionService {
         id: '${d['id']}',
         profile: profile,
         visitedAt: _parseDate(d['visitedAt']),
+        viewDate: d['viewDate'] as String? ?? '',
         visitCount: (d['visitCount'] as num?)?.toInt() ?? 1,
       );
     }).toList();
@@ -177,8 +193,19 @@ class InteractionService {
   }
 
   /// Fetch own profile visitor & bookmark analytics for day/week/month
-  static Future<ProfileAnalyticsModel> fetchProfileAnalytics(String period) async {
-    final result = await ApiService.get('/api/mat/analytics/profile', queryParams: {'period': period});
+  /// Optional weekStart format: 'YYYY-MM-DD'
+  static Future<ProfileAnalyticsModel> fetchProfileAnalytics(
+    String period, {
+    String? weekStart,
+  }) async {
+    final queryParams = <String, String>{'period': period};
+    if (weekStart != null && weekStart.isNotEmpty) {
+      queryParams['weekStart'] = weekStart;
+    }
+    final result = await ApiService.get(
+      '/api/mat/analytics/profile',
+      queryParams: queryParams,
+    );
     if (result['success'] != true) return ProfileAnalyticsModel.empty();
     return ProfileAnalyticsModel.fromJson(result, period);
   }

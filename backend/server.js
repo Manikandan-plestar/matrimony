@@ -573,6 +573,7 @@ function toPublicProfile(row, interactionMeta = {}) {
     lastActive: 'Active recently',
     // UI state flags from caller
     isSaved: Boolean(interactionMeta.isSaved),
+    isConnected: Boolean(interactionMeta.isConnected),
     isInterestSent: Boolean(interactionMeta.isInterestSent),
     interestStatus: interactionMeta.interestStatus || null,
   };
@@ -1572,7 +1573,8 @@ app.get('/api/mat/profiles', authenticateUser, async (req, res) => {
     const profileIds = profiles.map(p => p.id);
 
     let savedSet = new Set();
-    let interestMap = {}; // profileId -> { status }
+    let interestMap = {}; // profileId -> { status, isSender }
+    let matchedSet = new Set();
 
     if (profileIds.length) {
       // Saved profiles
@@ -1582,22 +1584,56 @@ app.get('/api/mat/profiles', authenticateUser, async (req, res) => {
       );
       savedRows.forEach(r => savedSet.add(r.saved_profile_id));
 
-      // Interest status
+      // Active connections in mat_matches
+      const [viewerProf] = await pool.query(
+        'SELECT id FROM mat_profiles WHERE user_id = ?',
+        [userId]
+      );
+      const viewerProfId = viewerProf.length ? viewerProf[0].id : null;
+      if (viewerProfId) {
+        const [matchRows] = await pool.query(
+          `SELECT profile_id_a, profile_id_b FROM mat_matches
+           WHERE (status IS NULL OR status = 'active')
+             AND ((profile_id_a = ? AND profile_id_b IN (?)) OR (profile_id_b = ? AND profile_id_a IN (?)))`,
+          [viewerProfId, profileIds, viewerProfId, profileIds]
+        );
+        matchRows.forEach(m => {
+          matchedSet.add(m.profile_id_a === viewerProfId ? m.profile_id_b : m.profile_id_a);
+        });
+      }
+
+      // Interest status (both sent and received where status is pending or accepted)
       const [interestRows] = await pool.query(
-        `SELECT receiver_profile_id, status FROM mat_interests
-         WHERE sender_user_id = ? AND receiver_profile_id IN (?)`,
-        [userId, profileIds]
+        `SELECT sender_profile_id, receiver_profile_id, sender_user_id, status FROM mat_interests
+         WHERE ((sender_user_id = ? AND receiver_profile_id IN (?))
+            OR (receiver_user_id = ? AND sender_profile_id IN (?)))
+           AND status IN ('pending', 'accepted')`,
+        [userId, profileIds, userId, profileIds]
       );
       interestRows.forEach(r => {
-        interestMap[r.receiver_profile_id] = { status: r.status };
+        if (r.sender_user_id === userId) {
+          interestMap[r.receiver_profile_id] = { status: r.status, isSender: true };
+        } else {
+          interestMap[r.sender_profile_id] = { status: r.status, isSender: false };
+        }
       });
     }
 
-    const publicProfiles = profiles.map(p => toPublicProfile(p, {
-      isSaved: savedSet.has(p.id),
-      isInterestSent: !!interestMap[p.id] && interestMap[p.id].status !== 'withdrawn',
-      interestStatus: interestMap[p.id]?.status || null,
-    }));
+    const publicProfiles = profiles.map(p => {
+      const isConnected = matchedSet.has(p.id) || interestMap[p.id]?.status === 'accepted';
+      const hasPendingSent = interestMap[p.id]?.isSender === true && interestMap[p.id]?.status === 'pending';
+      const isInterestSent = isConnected || hasPendingSent;
+      const interestStatus = isConnected
+        ? 'accepted'
+        : (interestMap[p.id] ? interestMap[p.id].status : null);
+
+      return toPublicProfile(p, {
+        isSaved: savedSet.has(p.id),
+        isConnected,
+        isInterestSent,
+        interestStatus,
+      });
+    });
 
     const [countRow] = await pool.query(`
       SELECT COUNT(*) AS total
@@ -1873,10 +1909,26 @@ app.post('/api/mat/profiles/:profileId/view', authenticateUser, async (req, res)
 /**
  * GET /api/mat/visitors
  * Returns who viewed the authenticated user's profile (private to owner).
+ * Optional query: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD (or single ?date=YYYY-MM-DD)
  */
 app.get('/api/mat/visitors', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.id;
+    const { startDate, endDate, date } = req.query;
+
+    // Premium Guard: Only users with active unlimited subscription (₹499 for 1 year) can access visitor profiles
+    const [subs] = await pool.query(
+      `SELECT id FROM mat_user_subscriptions WHERE user_id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [userId]
+    );
+    if (!subs.length) {
+      return res.status(403).json({
+        success: false,
+        requiresSubscription: true,
+        upgradePrice: UNLIMITED_SWIPE_PLAN_PRICE,
+        message: 'Profile visitors are accessible only for members with the ₹499 Unlimited Swipe Plan.'
+      });
+    }
 
     // Get user's profile id
     const [profRows] = await pool.query('SELECT id FROM mat_profiles WHERE user_id = ?', [userId]);
@@ -1885,19 +1937,32 @@ app.get('/api/mat/visitors', authenticateUser, async (req, res) => {
     }
     const profileId = profRows[0].id;
 
-    const [rows] = await pool.query(`
-      SELECT pv.viewer_user_id, pv.total_views, pv.last_viewed_at, p.*
+    let query = `
+      SELECT pv.viewer_user_id, pv.total_views, pv.last_viewed_at, 
+             DATE_FORMAT(pv.view_date, '%Y-%m-%d') AS formatted_view_date, p.*
       FROM mat_profile_views pv
       INNER JOIN mat_profiles p ON p.user_id = pv.viewer_user_id
       WHERE pv.profile_id = ? AND p.status = 'published'
-      ORDER BY pv.last_viewed_at DESC
-      LIMIT 50
-    `, [profileId]);
+    `;
+    const params = [profileId];
+
+    if (date) {
+      query += ` AND pv.view_date = ?`;
+      params.push(date);
+    } else if (startDate && endDate) {
+      query += ` AND pv.view_date >= ? AND pv.view_date <= ?`;
+      params.push(startDate, endDate);
+    }
+
+    query += ` ORDER BY pv.last_viewed_at DESC LIMIT 100`;
+
+    const [rows] = await pool.query(query, params);
 
     const visitors = rows.map(r => ({
-      id: `visitor_${r.viewer_user_id}`,
+      id: `visitor_${r.viewer_user_id}_${r.formatted_view_date || ''}`,
       profile: toPublicProfile(r),
       visitedAt: r.last_viewed_at,
+      viewDate: r.formatted_view_date || '',
       visitCount: r.total_views,
     }));
 
@@ -1911,20 +1976,73 @@ app.get('/api/mat/visitors', authenticateUser, async (req, res) => {
 /**
  * GET /api/mat/analytics/profile
  * Analytics for the authenticated user's own profile:
- * Total profile views, total distinct active saves, and daily, weekly, monthly breakdowns.
- * Query: ?period=day|week|month
+ * Total profile views, total distinct active saves, daily, weekly, monthly breakdowns,
+ * and Sunday-to-Saturday daily view distribution for interactive weekly bar chart.
+ * Query: ?period=day|week|month&weekStart=YYYY-MM-DD
  */
 app.get('/api/mat/analytics/profile', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.id;
-    const period = (req.query.period || 'day').toLowerCase();
+
+    // Premium Guard: Only users with active unlimited subscription (₹499 for 1 year) can access analytics
+    const [subs] = await pool.query(
+      `SELECT id FROM mat_user_subscriptions WHERE user_id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
+      [userId]
+    );
+    if (!subs.length) {
+      return res.status(403).json({
+        success: false,
+        requiresSubscription: true,
+        upgradePrice: UNLIMITED_SWIPE_PLAN_PRICE,
+        message: 'Profile visitor analytics are accessible only for members with the ₹499 Unlimited Swipe Plan.'
+      });
+    }
+
+    const period = (req.query.period || 'week').toLowerCase();
+    const reqWeekStart = req.query.weekStart; // Optional 'YYYY-MM-DD'
+
+    // Resolve base client date for default week calculation
+    const clientDateInfo = resolveClientDateAndReset(req);
+    const baseDateStr = reqWeekStart && /^\d{4}-\d{2}-\d{2}$/.test(reqWeekStart)
+      ? reqWeekStart
+      : clientDateInfo.dateStr;
+
+    // Calculate Sunday (start of week) and all 7 days (Sun through Sat)
+    const [bY, bM, bD] = baseDateStr.split('-').map(Number);
+    const refDate = new Date(Date.UTC(bY, bM - 1, bD));
+    // getUTCDay: 0=Sun, 1=Mon, ..., 6=Sat
+    const dayOfWeek = refDate.getUTCDay();
+    const sundayUtc = new Date(refDate.getTime() - dayOfWeek * 86400000);
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const curDate = new Date(sundayUtc.getTime() + i * 86400000);
+      const y = curDate.getUTCFullYear();
+      const m = String(curDate.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(curDate.getUTCDate()).padStart(2, '0');
+      weekDays.push({
+        date: `${y}-${m}-${d}`,
+        day: dayNames[i],
+        views: 0
+      });
+    }
+    const weekStartDate = weekDays[0].date;
+    const weekEndDate = weekDays[6].date;
 
     // Find authenticated user's own profile
     const [profRows] = await pool.query('SELECT id FROM mat_profiles WHERE user_id = ?', [userId]);
     if (!profRows.length) {
+      const emptyChart = {
+        startDate: weekStartDate,
+        endDate: weekEndDate,
+        totalViews: 0,
+        days: weekDays
+      };
       return res.status(200).json({
         success: true,
         period,
+        weeklyChart: emptyChart,
         analytics: {
           totalViews: 0,
           totalSaves: 0,
@@ -1933,13 +2051,14 @@ app.get('/api/mat/analytics/profile', authenticateUser, async (req, res) => {
           daily: { views: 0, saves: 0 },
           weekly: { views: 0, saves: 0 },
           monthly: { views: 0, saves: 0 },
+          weeklyChart: emptyChart,
         }
       });
     }
 
     const profileId = profRows[0].id;
 
-    // 1. Total Views (sum of total_views from mat_profile_views)
+    // 1. Total Lifetime Views (sum of total_views from mat_profile_views)
     const [totViewRows] = await pool.query(
       'SELECT COALESCE(SUM(total_views), 0) AS cnt FROM mat_profile_views WHERE profile_id = ?',
       [profileId]
@@ -1995,10 +2114,39 @@ app.get('/api/mat/analytics/profile', authenticateUser, async (req, res) => {
       saves: parseInt(monthSaveRows[0].cnt || 0, 10),
     };
 
+    // 6. Sunday-to-Saturday Day-by-Day Aggregate for Interactive Bar Chart
+    const [chartRows] = await pool.query(
+      `SELECT DATE_FORMAT(view_date, '%Y-%m-%d') AS v_date, COALESCE(SUM(total_views), 0) AS cnt
+       FROM mat_profile_views
+       WHERE profile_id = ? AND view_date >= ? AND view_date <= ?
+       GROUP BY view_date`,
+      [profileId, weekStartDate, weekEndDate]
+    );
+
+    const countsMap = {};
+    for (const r of chartRows) {
+      countsMap[r.v_date] = parseInt(r.cnt, 10);
+    }
+
+    let weeklyTotal = 0;
+    for (const wd of weekDays) {
+      if (countsMap[wd.date]) {
+        wd.views = countsMap[wd.date];
+      }
+      weeklyTotal += wd.views;
+    }
+
+    const weeklyChart = {
+      startDate: weekStartDate,
+      endDate: weekEndDate,
+      totalViews: weeklyTotal,
+      days: weekDays
+    };
+
     let periodViews = dailyStats.views;
     let periodSaves = dailyStats.saves;
     if (period === 'week') {
-      periodViews = weeklyStats.views;
+      periodViews = weeklyTotal;
       periodSaves = weeklyStats.saves;
     } else if (period === 'month') {
       periodViews = monthlyStats.views;
@@ -2008,6 +2156,7 @@ app.get('/api/mat/analytics/profile', authenticateUser, async (req, res) => {
     return res.status(200).json({
       success: true,
       period,
+      weeklyChart,
       analytics: {
         totalViews,
         totalSaves,
@@ -2016,6 +2165,7 @@ app.get('/api/mat/analytics/profile', authenticateUser, async (req, res) => {
         daily: dailyStats,
         weekly: weeklyStats,
         monthly: monthlyStats,
+        weeklyChart,
       }
     });
   } catch (err) {
@@ -2066,31 +2216,62 @@ app.post('/api/mat/interests/:receiverProfileId', authenticateUser, async (req, 
     }
     const receiverUserId = receiverProfRows[0].user_id;
 
-    // Check for existing non-withdrawn interest
-    const [existingRows] = await conn.query(`
-      SELECT id, status FROM mat_interests
-      WHERE sender_profile_id = ? AND receiver_profile_id = ?
-    `, [senderProfileId, receiverProfileId]);
+    // 1. Check if already connected in mat_matches
+    const [existingMatches] = await conn.query(`
+      SELECT id FROM mat_matches
+      WHERE ((profile_id_a = ? AND profile_id_b = ?) OR (profile_id_a = ? AND profile_id_b = ?))
+        AND (status IS NULL OR status = 'active')
+      LIMIT 1
+    `, [senderProfileId, receiverProfileId, receiverProfileId, senderProfileId]);
 
-    if (existingRows.length && existingRows[0].status !== 'withdrawn') {
+    if (existingMatches.length > 0) {
       return res.status(409).json({
         success: false,
-        message: `An interest request already exists with status: ${existingRows[0].status}.`,
+        code: 'ALREADY_CONNECTED',
+        message: 'You are already connected with this profile.',
+        status: 'accepted'
+      });
+    }
+
+    // 2. Check for existing pending or accepted interest in either direction
+    const [existingRows] = await conn.query(`
+      SELECT id, status, sender_profile_id, receiver_profile_id FROM mat_interests
+      WHERE ((sender_profile_id = ? AND receiver_profile_id = ?)
+         OR (sender_profile_id = ? AND receiver_profile_id = ?))
+        AND status IN ('pending', 'accepted')
+      LIMIT 1
+    `, [senderProfileId, receiverProfileId, receiverProfileId, senderProfileId]);
+
+    if (existingRows.length > 0) {
+      const isSender = existingRows[0].sender_profile_id === senderProfileId;
+      return res.status(409).json({
+        success: false,
+        code: 'REQUEST_ALREADY_EXISTS',
+        message: isSender
+          ? 'An interest request has already been sent to this profile.'
+          : 'This member has already sent you an interest request. Check your Requests tab.',
         status: existingRows[0].status
       });
     }
 
+    // 3. Check for previous inactive/withdrawn row between this sender and receiver
+    const [staleRows] = await conn.query(`
+      SELECT id FROM mat_interests
+      WHERE sender_profile_id = ? AND receiver_profile_id = ?
+      LIMIT 1
+    `, [senderProfileId, receiverProfileId]);
+
     await conn.beginTransaction();
 
     let interestId;
-    if (existingRows.length) {
-      // Reactivate withdrawn interest
+    if (staleRows.length > 0) {
+      // Reactivate previous row
       await conn.query(
         `UPDATE mat_interests SET status = 'pending', withdrawn_at = NULL, responded_at = NULL, updated_at = NOW()
          WHERE id = ?`,
-        [existingRows[0].id]
+        [staleRows[0].id]
       );
-      interestId = existingRows[0].id;
+      interestId = staleRows[0].id;
     } else {
       const [insResult] = await conn.query(`
         INSERT INTO mat_interests
@@ -2162,7 +2343,7 @@ app.get('/api/mat/interests', authenticateUser, async (req, res) => {
       `;
       params = [userId];
     } else {
-      // Sent requests by user — active requests only; withdrawn & removed are omitted
+      // Sent requests by user — pending requests only; once accepted it moves to Connections
       query = `
         SELECT i.*, p.id AS prof_id, p.full_name, p.profile_photo_url, p.age,
                p.mother_tongue, p.highest_education, p.occupation, p.city,
@@ -2170,7 +2351,7 @@ app.get('/api/mat/interests', authenticateUser, async (req, res) => {
                p.gender, p.bio, p.profile_code
         FROM mat_interests i
         INNER JOIN mat_profiles p ON p.id = i.receiver_profile_id
-        WHERE i.sender_user_id = ? AND i.status NOT IN ('withdrawn', 'removed')
+        WHERE i.sender_user_id = ? AND i.status = 'pending'
         ORDER BY i.created_at DESC
       `;
       params = [userId];
@@ -2283,60 +2464,93 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
       });
     }
 
-    const newStatus = action === 'accept' ? 'accepted' : action === 'reject' ? 'rejected' : 'withdrawn';
-    const withdrawnAt = action === 'withdraw' ? new Date() : null;
-    const respondedAt = ['accept', 'reject'].includes(action) ? new Date() : null;
+    if (action === 'withdraw') {
+      // 1. Delete notification sent to the recipient so they don't see a phantom request notification
+      await conn.query('DELETE FROM mat_notifications WHERE related_interest_id = ?', [interestId]);
 
+      // 2. Delete the interest record so the request is completely removed from both sender and receiver sides
+      await conn.query('DELETE FROM mat_interests WHERE id = ?', [interestId]);
+
+      await conn.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Interest request withdrawn and removed from both sides.',
+        interestId,
+        status: 'withdrawn',
+      });
+    }
+
+    if (action === 'reject') {
+      // 1. Delete notification sent to the recipient
+      await conn.query('DELETE FROM mat_notifications WHERE related_interest_id = ?', [interestId]);
+
+      // 2. Delete the interest record so both sides have the request completely removed
+      await conn.query('DELETE FROM mat_interests WHERE id = ?', [interestId]);
+
+      await conn.commit();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Interest request rejected and removed from both sides.',
+        interestId,
+        status: 'rejected',
+      });
+    }
+
+    // Action is 'accept':
+    // Remove the pending interest_received notification
+    await conn.query(`DELETE FROM mat_notifications WHERE related_interest_id = ? AND type = 'interest_received'`, [interestId]);
+
+    // Update status to 'accepted'
     await conn.query(`
       UPDATE mat_interests
-      SET status = ?, withdrawn_at = ?, responded_at = ?, updated_at = NOW()
+      SET status = 'accepted', responded_at = NOW(), updated_at = NOW()
       WHERE id = ?
-    `, [newStatus, withdrawnAt, respondedAt, interestId]);
+    `, [interestId]);
 
-    // If accepted: create mat_matches record + notification for sender
-    if (action === 'accept') {
-      const [senderProfRows] = await conn.query(
-        'SELECT full_name FROM mat_profiles WHERE id = ?', [interest.sender_profile_id]
-      );
-      const [receiverProfRows] = await conn.query(
-        'SELECT full_name, compatibility_score FROM mat_profiles WHERE id = ?', [interest.receiver_profile_id]
-      );
+    // Create mat_matches record + notification for sender
+    const [senderProfRows] = await conn.query(
+      'SELECT full_name FROM mat_profiles WHERE id = ?', [interest.sender_profile_id]
+    );
+    const [receiverProfRows] = await conn.query(
+      'SELECT full_name, compatibility_score FROM mat_profiles WHERE id = ?', [interest.receiver_profile_id]
+    );
 
-      const receiverName = receiverProfRows[0]?.full_name || 'Your match';
-      const score = receiverProfRows[0]?.compatibility_score || 85;
+    const receiverName = receiverProfRows[0]?.full_name || 'Your match';
+    const score = receiverProfRows[0]?.compatibility_score || 85;
 
-      // Create match record
-      await conn.query(`
-        INSERT IGNORE INTO mat_matches
-          (user_id_a, user_id_b, profile_id_a, profile_id_b, interest_id, compatibility_score, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'active')
-      `, [
-        interest.sender_user_id, interest.receiver_user_id,
-        interest.sender_profile_id, interest.receiver_profile_id,
-        interestId, score
-      ]);
+    // Create match record
+    await conn.query(`
+      INSERT IGNORE INTO mat_matches
+        (user_id_a, user_id_b, profile_id_a, profile_id_b, interest_id, compatibility_score, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'active')
+    `, [
+      interest.sender_user_id, interest.receiver_user_id,
+      interest.sender_profile_id, interest.receiver_profile_id,
+      interestId, score
+    ]);
 
-      // Notify sender that their interest was accepted
-      await conn.query(`
-        INSERT INTO mat_notifications
-          (user_id, type, title, message, related_profile_id, related_interest_id)
-        VALUES (?, 'interest_accepted', ?, ?, ?, ?)
-      `, [
-        interest.sender_user_id,
-        '🎉 Interest Accepted!',
-        `${receiverName} has accepted your interest! You can now view their full profile.`,
-        interest.receiver_profile_id,
-        interestId
-      ]);
-    }
+    // Notify sender that their interest was accepted
+    await conn.query(`
+      INSERT INTO mat_notifications
+        (user_id, type, title, message, related_profile_id, related_interest_id)
+      VALUES (?, 'interest_accepted', ?, ?, ?, ?)
+    `, [
+      interest.sender_user_id,
+      '🎉 Interest Accepted!',
+      `${receiverName} has accepted your interest! You can now view their full profile.`,
+      interest.receiver_profile_id,
+      interestId
+    ]);
 
     await conn.commit();
 
     return res.status(200).json({
       success: true,
-      message: `Interest ${newStatus} successfully.`,
+      message: 'Interest accepted successfully. Added to connections.',
       interestId,
-      status: newStatus,
+      status: 'accepted',
     });
   } catch (err) {
     await conn.rollback();
@@ -2615,11 +2829,11 @@ app.get('/api/mat/subscriptions/swipe-status', authenticateUser, async (req, res
     // Worldwide device timezone resolution
     const { dateStr: swipeDate, resetAt, timezone, offsetMinutes } = resolveClientDateAndReset(req);
 
-    // 1. Check active subscription
+    // 1. Check active subscription (valid within 1 year)
     const [subs] = await pool.query(
       `SELECT id, plan_type, plan_price, starts_at, expires_at 
        FROM mat_user_subscriptions 
-       WHERE user_id = ? AND status = 'active' 
+       WHERE user_id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
        ORDER BY id DESC LIMIT 1`,
       [userId]
     );
@@ -2679,9 +2893,9 @@ app.post('/api/mat/swipes', authenticateUser, async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    // 1. Check if user has active unlimited subscription
+    // 1. Check if user has active unlimited subscription (valid within 1 year)
     const [subs] = await conn.query(
-      `SELECT id FROM mat_user_subscriptions WHERE user_id = ? AND status = 'active' LIMIT 1`,
+      `SELECT id FROM mat_user_subscriptions WHERE user_id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1`,
       [userId]
     );
     const isUnlimited = subs.length > 0;
@@ -2870,10 +3084,11 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
       verificationStatus: 'VERIFIED_SUCCESS'
     });
 
+    // Store subscription record with 1 year (365 days) validity from date of purchase
     await conn.query(
       `INSERT INTO mat_user_subscriptions 
-       (user_id, plan_type, plan_price, currency, status, payment_id, payment_gateway, transaction_data)
-       VALUES (?, 'unlimited_swipes', ?, ?, 'active', ?, ?, ?)`,
+       (user_id, plan_type, plan_price, currency, status, payment_id, payment_gateway, transaction_data, starts_at, expires_at)
+       VALUES (?, 'unlimited_swipes', ?, ?, 'active', ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 1 YEAR))`,
       [userId, verifiedAmount, currency, cleanPaymentId, effectiveGateway, transactionData]
     );
 
