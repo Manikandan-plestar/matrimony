@@ -126,6 +126,24 @@ class AuthService {
       await ApiService.clearToken();
     }
   }
+
+  /// Permanently delete account: wipes all profile, photo, matches, and account records on backend,
+  /// and clears local credentials.
+  static Future<bool> deleteAccount() async {
+    try {
+      final res = await ApiService.post('/api/mat/account/delete');
+      return res['success'] == true;
+    } catch (_) {
+      try {
+        final res = await ApiService.delete('/api/mat/account');
+        return res['success'] == true;
+      } catch (_) {
+        return false;
+      }
+    } finally {
+      await ApiService.clearToken();
+    }
+  }
 }
 
 /// Parse a MatrimonyProfileModel from API response map.

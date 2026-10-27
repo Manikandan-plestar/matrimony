@@ -126,6 +126,15 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> deleteAccount() async {
+    final success = await AuthService.deleteAccount();
+    _isLoggedIn = false;
+    _currentUser = null;
+    _errorMessage = null;
+    notifyListeners();
+    return success;
+  }
+
   // ── Backward-compatible demo method (used in dev when no backend is reachable) ──
   void loginDemo() {
     _isLoggedIn = true;

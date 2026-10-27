@@ -1292,6 +1292,87 @@ app.post('/api/mat/auth/logout', authenticateUser, async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/mat/account
+ * POST /api/mat/account/delete
+ * Permanently deletes the authenticated user's account and cascades all associated matrimonial data.
+ */
+async function handlePermanentAccountDeletion(req, res) {
+  let conn;
+  try {
+    const userId = req.user.id;
+    const email = req.user.email;
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    // 1. Fetch user's profile IDs
+    const [profiles] = await conn.query('SELECT id FROM mat_profiles WHERE user_id = ?', [userId]);
+    const profileIds = profiles.map(p => p.id);
+
+    if (profileIds.length > 0) {
+      // Delete images associated with these profiles
+      await conn.query('DELETE FROM mat_profile_images WHERE profile_id IN (?)', [profileIds]);
+      // Delete profile views on these profiles
+      await conn.query('DELETE FROM mat_profile_views WHERE profile_id IN (?)', [profileIds]);
+      // Delete saved profiles pointing to these profiles
+      await conn.query('DELETE FROM mat_saved_profiles WHERE saved_profile_id IN (?)', [profileIds]);
+      // Delete interests where these profiles are sender or receiver
+      await conn.query(
+        'DELETE FROM mat_interests WHERE sender_profile_id IN (?) OR receiver_profile_id IN (?)',
+        [profileIds, profileIds]
+      );
+      // Delete matches involving these profiles
+      await conn.query(
+        'DELETE FROM mat_matches WHERE profile_id_a IN (?) OR profile_id_b IN (?)',
+        [profileIds, profileIds]
+      );
+      // Delete swipe logs targeting these profiles
+      await conn.query('DELETE FROM mat_swipe_logs WHERE target_profile_id IN (?)', [profileIds]);
+      // Delete profiles
+      await conn.query('DELETE FROM mat_profiles WHERE user_id = ?', [userId]);
+    }
+
+    // 2. Delete viewer profile views by this user
+    await conn.query('DELETE FROM mat_profile_views WHERE viewer_user_id = ?', [userId]);
+    // 3. Delete saved profiles by this user
+    await conn.query('DELETE FROM mat_saved_profiles WHERE user_id = ?', [userId]);
+    // 4. Delete interests where this user is sender or receiver
+    await conn.query('DELETE FROM mat_interests WHERE sender_user_id = ? OR receiver_user_id = ?', [userId, userId]);
+    // 5. Delete matches where this user is user_id_a or user_id_b
+    await conn.query('DELETE FROM mat_matches WHERE user_id_a = ? OR user_id_b = ?', [userId, userId]);
+    // 6. Delete notifications for this user
+    await conn.query('DELETE FROM mat_notifications WHERE user_id = ?', [userId]);
+    // 7. Delete subscriptions for this user
+    await conn.query('DELETE FROM mat_user_subscriptions WHERE user_id = ?', [userId]);
+    // 8. Delete daily swipe usage & logs for this user
+    await conn.query('DELETE FROM mat_daily_swipes WHERE user_id = ?', [userId]);
+    await conn.query('DELETE FROM mat_swipe_logs WHERE user_id = ?', [userId]);
+    // 9. Invalidate/delete email OTPs for this email
+    if (email) {
+      await conn.query('DELETE FROM email_otp WHERE email = ?', [email]);
+    }
+    // 10. Delete the user account record
+    await conn.query('DELETE FROM mat_users WHERE id = ?', [userId]);
+
+    await conn.commit();
+    console.log(`[Account] User ${userId} (${email}) permanently deleted.`);
+    return res.status(200).json({
+      success: true,
+      message: 'Your account and all associated profile data have been permanently deleted.'
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error('[Account] Error deleting account:', err);
+    return res.status(500).json({ success: false, message: 'Failed to delete account. Please try again.' });
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+app.delete('/api/mat/account', authenticateUser, handlePermanentAccountDeletion);
+app.post('/api/mat/account/delete', authenticateUser, handlePermanentAccountDeletion);
+
 // ============================================================
 // 11. ACCOUNT / USER ROUTES
 // ============================================================

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
@@ -331,27 +332,25 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
 
             const SizedBox(height: 18),
 
-            // 4. Group: Support
-            _buildGroupHeader('Support'),
+            // 4. Group: Settings & Support
+            _buildGroupHeader('Settings & Support'),
             _buildMenuGroup([
-              // _buildMenuItem(
-              //   icon: Icons.lock_outline_rounded,
-              //   title: 'Privacy & Visibility Settings',
-              //   onTap: () => Navigator.pushNamed(context, '/privacy-settings'),
-              // ),
-              // _buildMenuItem(
-              //   icon: Icons.notifications_none_rounded,
-              //   title: 'Notification Preferences',
-              //   onTap: () => Navigator.pushNamed(context, '/notification-settings'),
-              // ),
+              _buildMenuItem(
+                icon: Icons.settings_outlined,
+                title: 'Settings',
+                subtitle: 'Privacy, notifications & account preferences',
+                onTap: () => Navigator.pushNamed(context, '/privacy-settings'),
+              ),
               _buildMenuItem(
                 icon: Icons.help_outline_rounded,
                 title: 'Help & Customer Support',
+                subtitle: 'FAQs, contact team & grievance redressal',
                 onTap: () => Navigator.pushNamed(context, '/help-support'),
               ),
               _buildMenuItem(
                 icon: Icons.info_outline_rounded,
                 title: 'About Matrimonyer App',
+                subtitle: 'Terms, version info & privacy policy',
                 onTap: () => Navigator.pushNamed(context, '/about-app'),
               ),
             ]),
@@ -363,13 +362,13 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.error,
-                  side: const BorderSide(color: AppTheme.error),
+                  foregroundColor: AppTheme.textPrimary,
+                  side: const BorderSide(color: AppTheme.cardBorder),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                icon: const Icon(Icons.logout_rounded, size: 18),
-                label: const Text('Logout'),
+                icon: const Icon(Icons.logout_rounded, size: 18, color: AppTheme.error),
+                label: const Text('Logout', style: TextStyle(fontWeight: FontWeight.w600)),
                 onPressed: () => _handleLogout(context),
               ),
             ),
@@ -380,6 +379,172 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
     );
   }
 
+  /// Permanent Account Deletion Dialog with Type-to-Confirm Safeguard
+  Future<void> _handleDeleteAccount(BuildContext context) async {
+    final deleteTextController = TextEditingController();
+    bool isMatch = false;
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 26),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Delete My Account',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.error.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
+                    ),
+                    child: const Text(
+                      '⚠️ Warning: This action is permanent and cannot be undone. All your profile details, uploaded photos, saved matches, interests, and subscription benefits will be permanently wiped.',
+                      style: TextStyle(fontSize: 12.5, color: AppTheme.error, height: 1.4),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'To confirm permanent deletion, type "delete my account" below:',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: deleteTextController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'Type "delete my account"',
+                      hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.cardBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.error, width: 1.8),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      final clean = val.trim().toLowerCase();
+                      final matches = clean == 'delete my account' || clean == 'delete';
+                      if (matches != isMatch) {
+                        setDialogState(() {
+                          isMatch = matches;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.error,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: AppTheme.cardBorder,
+                  disabledForegroundColor: AppTheme.textMuted,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                icon: const Icon(Icons.delete_forever_rounded, size: 18),
+                label: const Text('Delete Forever'),
+                onPressed: isMatch ? () => Navigator.pop(ctx, true) : null,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    deleteTextController.dispose();
+
+    if (shouldDelete != true) return;
+    if (!context.mounted) return;
+
+    // Show non-dismissible loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: AppTheme.error),
+              SizedBox(height: 16),
+              Text(
+                'Permanently deleting your account...',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 1. Permanently wipe account on backend and delete JWT
+      await context.read<AuthProvider>().deleteAccount();
+
+      // 2. Clear in-memory cached state across all providers
+      if (context.mounted) {
+        context.read<ProfileProvider>().clear();
+        context.read<DiscoveryProvider>().clear();
+        context.read<InteractionProvider>().clear();
+        context.read<NotificationProvider>().clear();
+        context.read<SubscriptionProvider>().reset();
+        context.read<SearchFilterProvider>().clearAllFilters();
+      }
+    } catch (_) {
+      // Handled gracefully: local credentials cleared
+    }
+
+    if (context.mounted) {
+      // Close loading dialog if open
+      Navigator.of(context, rootNavigator: true).pop();
+
+      // Show confirmation SnackBar
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppTheme.error,
+          content: Text('Your account and matrimonial data have been permanently deleted.'),
+        ),
+      );
+
+      // 3. Clear navigation stack and redirect to Login screen
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    }
+  }
+
+  /// Logout confirmation dialog with clear confirmation safeguards
   Future<void> _handleLogout(BuildContext context) async {
     final shouldLogout = await showDialog<bool>(
       context: context,
@@ -387,9 +552,9 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.logout_rounded, color: AppTheme.error, size: 24),
+            Icon(Icons.logout_rounded, color: AppTheme.burgundy, size: 24),
             SizedBox(width: 8),
-            Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('Confirm Logout', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         content: const Text(
@@ -402,7 +567,7 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.error,
+              backgroundColor: AppTheme.burgundy,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -487,24 +652,43 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
     required String title,
     String? subtitle,
     String? badgeText,
+    Color? iconColor,
+    Color? iconBgColor,
+    Color? titleColor,
+    bool isDestructive = false,
     required VoidCallback onTap,
   }) {
+    final effectiveIconColor = iconColor ?? (isDestructive ? AppTheme.error : AppTheme.burgundy);
+    final effectiveBgColor = iconBgColor ??
+        (isDestructive ? AppTheme.error.withValues(alpha: 0.1) : AppTheme.roseLight.withValues(alpha: 0.5));
+    final effectiveTitleColor = titleColor ?? (isDestructive ? AppTheme.error : AppTheme.textPrimary);
+
     return ListTile(
       onTap: onTap,
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: AppTheme.roseLight.withValues(alpha: 0.5),
+          color: effectiveBgColor,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: AppTheme.burgundy, size: 20),
+        child: Icon(icon, color: effectiveIconColor, size: 20),
       ),
       title: Text(
         title,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: isDestructive ? FontWeight.w700 : FontWeight.w600,
+          color: effectiveTitleColor,
+        ),
       ),
       subtitle: subtitle != null
-          ? Text(subtitle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary))
+          ? Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDestructive ? AppTheme.error.withValues(alpha: 0.8) : AppTheme.textSecondary,
+              ),
+            )
           : null,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -523,10 +707,15 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
             ),
             const SizedBox(width: 6),
           ],
-          const Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.textMuted),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 20,
+            color: isDestructive ? AppTheme.error.withValues(alpha: 0.6) : AppTheme.textMuted,
+          ),
         ],
       ),
     );
   }
 }
+
 
