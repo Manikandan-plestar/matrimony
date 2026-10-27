@@ -46,6 +46,7 @@ class MatrimonyCardView extends StatelessWidget {
               fullName: profile.fullName,
               gender: profile.gender,
               fit: BoxFit.cover,
+              isShielded: profile.isPhotoShielded,
             ),
           ),
 

@@ -26,6 +26,7 @@ import 'screens/edit_partner_preferences_screen.dart';
 import 'widgets/common/wedding_pattern_background.dart';
 import 'screens/visitors_screen.dart';
 import 'screens/static_settings_screen.dart';
+import 'screens/subscription_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -114,6 +115,10 @@ class MatrimonyApp extends StatelessWidget {
             case '/about-app':
               return MaterialPageRoute(
                 builder: (_) => const StaticSettingsScreen(type: SettingsScreenType.about),
+              );
+            case '/subscription':
+              return MaterialPageRoute(
+                builder: (_) => const SubscriptionScreen(),
               );
             default:
               return MaterialPageRoute(builder: (_) => const MainScreen());

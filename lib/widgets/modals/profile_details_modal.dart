@@ -130,6 +130,7 @@ class _ProfileDetailsModalState extends State<ProfileDetailsModal> {
                                     fullName: p.fullName,
                                     gender: p.gender,
                                     fit: BoxFit.cover,
+                                    isShielded: p.isPhotoShielded,
                                   ),
                                 ),
                               ),

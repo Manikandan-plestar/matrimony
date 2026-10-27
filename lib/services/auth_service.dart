@@ -201,5 +201,9 @@ MatrimonyProfileModel profileFromApi(Map<String, dynamic> d) {
     isSaved: d['isSaved'] == true,
     isInterestSent: d['isInterestSent'] == true,
     interestStatus: d['interestStatus'] as String?,
+    isPhotoShielded: d['isPhotoShielded'] == true,
+    photoShield: d['photoShield'] == true,
+    isDiscoverable: d['isDiscoverable'] != false,
+    protectPhone: d['protectPhone'] != false,
   );
 }

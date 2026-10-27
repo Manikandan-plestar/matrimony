@@ -413,6 +413,16 @@ async function initDatabase() {
       await conn.query(`ALTER TABLE mat_profiles ADD COLUMN pref_dietary_preference VARCHAR(50) DEFAULT 'Does Not Matter'`);
     } catch (_) { }
 
+    // Safe migration: ensure privacy & notification settings columns exist in mat_profiles
+    try { await conn.query(`ALTER TABLE mat_profiles ADD COLUMN is_discoverable TINYINT DEFAULT 1`); } catch (_) { }
+    try { await conn.query(`ALTER TABLE mat_profiles ADD COLUMN protect_phone TINYINT DEFAULT 1`); } catch (_) { }
+    try { await conn.query(`ALTER TABLE mat_profiles ADD COLUMN photo_shield TINYINT DEFAULT 0`); } catch (_) { }
+    try { await conn.query(`ALTER TABLE mat_profiles ADD COLUMN notify_high_match TINYINT DEFAULT 1`); } catch (_) { }
+    try { await conn.query(`ALTER TABLE mat_profiles ADD COLUMN notify_interests TINYINT DEFAULT 1`); } catch (_) { }
+    try { await conn.query(`ALTER TABLE mat_profiles ADD COLUMN notify_visitors TINYINT DEFAULT 1`); } catch (_) { }
+
+
+
     // ---- Table 10: mat_user_subscriptions ----
     await conn.query(`
       CREATE TABLE IF NOT EXISTS mat_user_subscriptions (
@@ -736,6 +746,13 @@ function generateProfileCode(gender) {
  * Private fields (phone, address, email, full location, family details etc.) are NEVER returned here.
  */
 function toPublicProfile(row, interactionMeta = {}) {
+  const photoShieldActive = Boolean(row.photo_shield);
+  const isOwner = Boolean(interactionMeta.isOwner);
+  const isViewerVerified = Boolean(interactionMeta.isViewerVerified);
+  const isConnected = Boolean(interactionMeta.isConnected);
+  // Photo shield rule: when ON, hides from normal users; only show to verified and mutually connected users
+  const isPhotoShielded = photoShieldActive && !isOwner && !isViewerVerified && !isConnected;
+
   return {
     id: row.id,
     profileCode: row.profile_code,
@@ -754,9 +771,14 @@ function toPublicProfile(row, interactionMeta = {}) {
     lastActive: 'Active recently',
     // UI state flags from caller
     isSaved: Boolean(interactionMeta.isSaved),
-    isConnected: Boolean(interactionMeta.isConnected),
+    isConnected,
     isInterestSent: Boolean(interactionMeta.isInterestSent),
     interestStatus: interactionMeta.interestStatus || null,
+    // Privacy Shield & discoverability flags
+    isPhotoShielded,
+    photoShield: photoShieldActive,
+    isDiscoverable: row.is_discoverable !== undefined && row.is_discoverable !== null ? Boolean(row.is_discoverable) : true,
+    protectPhone: row.protect_phone !== undefined && row.protect_phone !== null ? Boolean(row.protect_phone) : true,
   };
 }
 
@@ -765,6 +787,28 @@ function toPublicProfile(row, interactionMeta = {}) {
  */
 function toFullProfile(row, interactionMeta = {}) {
   const pub = toPublicProfile(row, interactionMeta);
+  const isOwner = Boolean(interactionMeta.isOwner);
+
+  // Protect Mobile Number rule:
+  // - If isOwner: profile owner always views their own phone.
+  // - If protect_phone == 0 (OFF): NOT shown to others even if mutually connected.
+  // - If protect_phone == 1 (ON): shown ONLY if viewer is verified (isViewerVerified == true).
+  let phone = '';
+  let countryCode = '';
+  if (isOwner) {
+    phone = row.phone || '';
+    countryCode = row.country_code || '+91';
+  } else {
+    const protectPhone = row.protect_phone !== undefined && row.protect_phone !== null ? Number(row.protect_phone) : 1;
+    if (protectPhone === 1 && interactionMeta.isViewerVerified) {
+      phone = row.phone || '';
+      countryCode = row.country_code || '+91';
+    } else {
+      phone = '';
+      countryCode = '';
+    }
+  }
+
   return {
     ...pub,
     religion: row.religion || '',
@@ -791,12 +835,12 @@ function toFullProfile(row, interactionMeta = {}) {
     prefOccupation: row.pref_occupation || '',
     prefIncome: row.pref_income || '',
     partnerExpectations: row.partner_expectations || '',
-    // Only shared after acceptance — phone exposed in full profile
-    countryCode: row.country_code || '+91',
-    phone: row.phone || '',
-    address: row.address || '',
+    countryCode,
+    phone,
+    address: isOwner ? (row.address || '') : '',
     moreInfoClicks: row.more_info_clicks || 0,
     status: row.status,
+    notifyHighMatch: row.notify_high_match !== undefined && row.notify_high_match !== null ? Boolean(row.notify_high_match) : true,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -806,7 +850,7 @@ function toFullProfile(row, interactionMeta = {}) {
  * Own profile DTO: all fields including contact for the profile owner.
  */
 function toOwnProfile(row) {
-  return toFullProfile(row, { isSaved: false, isInterestSent: false });
+  return toFullProfile(row, { isOwner: true, isSaved: false, isInterestSent: false, isViewerVerified: true, isConnected: false });
 }
 
 // ============================================================
@@ -1746,6 +1790,180 @@ app.delete('/api/mat/profiles/me', authenticateUser, async (req, res) => {
   }
 });
 
+/**
+ * Automatically checks and triggers High Compatibility (80%+) match alerts
+ * for the user if notify_high_match is enabled.
+ */
+async function checkAndNotifyHighMatches(userId) {
+  try {
+    const [userProf] = await pool.query(
+      'SELECT id, gender, notify_high_match FROM mat_profiles WHERE user_id = ?',
+      [userId]
+    );
+    if (!userProf.length) return;
+    const notifyHighMatch = userProf[0].notify_high_match !== undefined && userProf[0].notify_high_match !== null
+      ? userProf[0].notify_high_match
+      : 1;
+    if (Number(notifyHighMatch) === 0) return;
+
+    const myGender = userProf[0].gender;
+    const targetGender = myGender === 'Groom' ? 'Bride' : 'Groom';
+
+    // Find candidate profiles of target gender with compatibility_score >= 80
+    // that haven't been notified to this user yet
+    const [candidates] = await pool.query(`
+      SELECT p.id, p.full_name, p.compatibility_score
+      FROM mat_profiles p
+      WHERE p.gender = ?
+        AND p.status = 'published'
+        AND COALESCE(p.is_discoverable, 1) = 1
+        AND p.compatibility_score >= 80
+        AND p.id NOT IN (
+          SELECT related_profile_id FROM mat_notifications
+          WHERE user_id = ? AND type = 'high_match_alert' AND related_profile_id IS NOT NULL
+        )
+      ORDER BY p.compatibility_score DESC
+      LIMIT 3
+    `, [targetGender, userId]);
+
+    for (const c of candidates) {
+      await pool.query(`
+        INSERT INTO mat_notifications (user_id, type, title, message, related_profile_id)
+        VALUES (?, 'high_match_alert', ?, ?, ?)
+      `, [
+        userId,
+        '⚡ 80%+ High Compatibility Match',
+        `${c.full_name} is an exceptional ${c.compatibility_score}% compatibility match for your profile!`,
+        c.id
+      ]);
+    }
+  } catch (err) {
+    console.error('[HighMatch] Notification generator error:', err.message);
+  }
+}
+
+/**
+ * GET /api/mat/settings & GET /api/mat/profiles/me/settings
+ * Returns user's privacy and notification toggle preferences.
+ */
+async function handleGetSettings(req, res) {
+  try {
+    const userId = req.user.id;
+    const [rows] = await pool.query(
+      'SELECT is_discoverable, protect_phone, photo_shield, notify_high_match, notify_interests, notify_visitors FROM mat_profiles WHERE user_id = ?',
+      [userId]
+    );
+    if (!rows.length) {
+      return res.status(200).json({
+        success: true,
+        settings: {
+          profileDiscoverable: true,
+          protectPhone: true,
+          photoShield: false,
+          notifyHighMatch: true,
+          notifyInterests: true,
+          notifyVisitors: true,
+        }
+      });
+    }
+    const r = rows[0];
+    return res.status(200).json({
+      success: true,
+      settings: {
+        profileDiscoverable: r.is_discoverable !== undefined && r.is_discoverable !== null ? Boolean(r.is_discoverable) : true,
+        protectPhone: r.protect_phone !== undefined && r.protect_phone !== null ? Boolean(r.protect_phone) : true,
+        photoShield: r.photo_shield !== undefined && r.photo_shield !== null ? Boolean(r.photo_shield) : false,
+        notifyHighMatch: r.notify_high_match !== undefined && r.notify_high_match !== null ? Boolean(r.notify_high_match) : true,
+        notifyInterests: r.notify_interests !== undefined && r.notify_interests !== null ? Boolean(r.notify_interests) : true,
+        notifyVisitors: r.notify_visitors !== undefined && r.notify_visitors !== null ? Boolean(r.notify_visitors) : true,
+      }
+    });
+  } catch (err) {
+    console.error('[Settings] GET error:', err.message);
+    return res.status(500).json({ success: false, message: 'Error fetching settings.' });
+  }
+}
+
+/**
+ * PATCH /api/mat/settings & PATCH /api/mat/profiles/me/settings
+ * Updates user's privacy & notification preferences.
+ */
+async function handleUpdateSettings(req, res) {
+  try {
+    const userId = req.user.id;
+    const b = req.body || {};
+
+    const [rows] = await pool.query('SELECT id FROM mat_profiles WHERE user_id = ?', [userId]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Profile not found. Please create a profile first.' });
+    }
+
+    const updates = [];
+    const values = [];
+
+    if (b.profileDiscoverable !== undefined) {
+      updates.push('is_discoverable = ?');
+      values.push(b.profileDiscoverable ? 1 : 0);
+    }
+    if (b.protectPhone !== undefined) {
+      updates.push('protect_phone = ?');
+      values.push(b.protectPhone ? 1 : 0);
+    }
+    if (b.photoShield !== undefined) {
+      updates.push('photo_shield = ?');
+      values.push(b.photoShield ? 1 : 0);
+    }
+    if (b.notifyHighMatch !== undefined) {
+      updates.push('notify_high_match = ?');
+      values.push(b.notifyHighMatch ? 1 : 0);
+    }
+    if (b.notifyInterests !== undefined) {
+      updates.push('notify_interests = ?');
+      values.push(b.notifyInterests ? 1 : 0);
+    }
+    if (b.notifyVisitors !== undefined) {
+      updates.push('notify_visitors = ?');
+      values.push(b.notifyVisitors ? 1 : 0);
+    }
+
+    if (updates.length > 0) {
+      values.push(userId);
+      await pool.query(`UPDATE mat_profiles SET ${updates.join(', ')} WHERE user_id = ?`, values);
+    }
+
+    // If 80%+ match alert is enabled, trigger the high match alert check immediately
+    if (b.notifyHighMatch === true) {
+      await checkAndNotifyHighMatches(userId);
+    }
+
+    const [updatedRows] = await pool.query(
+      'SELECT is_discoverable, protect_phone, photo_shield, notify_high_match, notify_interests, notify_visitors FROM mat_profiles WHERE user_id = ?',
+      [userId]
+    );
+    const r = updatedRows[0];
+    return res.status(200).json({
+      success: true,
+      settings: {
+        profileDiscoverable: Boolean(r.is_discoverable),
+        protectPhone: Boolean(r.protect_phone),
+        photoShield: Boolean(r.photo_shield),
+        notifyHighMatch: Boolean(r.notify_high_match),
+        notifyInterests: Boolean(r.notify_interests),
+        notifyVisitors: Boolean(r.notify_visitors),
+      }
+    });
+  } catch (err) {
+    console.error('[Settings] PATCH error:', err.message);
+    return res.status(500).json({ success: false, message: 'Error updating settings.' });
+  }
+}
+
+app.get('/api/mat/settings', authenticateUser, handleGetSettings);
+app.get('/api/mat/profiles/me/settings', authenticateUser, handleGetSettings);
+app.patch('/api/mat/settings', authenticateUser, handleUpdateSettings);
+app.patch('/api/mat/profiles/me/settings', authenticateUser, handleUpdateSettings);
+
+
 // ============================================================
 // 14. DISCOVERY ROUTES (Groom & Bride Feeds)
 // ============================================================
@@ -1779,19 +1997,21 @@ app.get('/api/mat/profiles', authenticateUser, async (req, res) => {
       return res.status(429).json({ success: false, message: 'Too many profile requests. Please slow down.' });
     }
 
-    // Get the viewer's own country and preferred location
+    // Get the viewer's own country, preferred location, and verification status
     const [viewerRows] = await pool.query(
-      'SELECT country, pref_location FROM mat_profiles WHERE user_id = ?',
+      'SELECT country, pref_location, is_verified FROM mat_profiles WHERE user_id = ?',
       [userId]
     );
     const viewerCountry = viewerRows.length ? (viewerRows[0].country || '').toLowerCase().trim() : '';
     const viewerPrefLoc = viewerRows.length ? (viewerRows[0].pref_location || '').trim() : '';
+    const isViewerVerified = viewerRows.length ? Boolean(viewerRows[0].is_verified) : false;
 
     // Build parameterized query for discovery
     const conditions = [
       'p.gender = ?',
       "p.status = 'published'",
       'p.user_id != ?',
+      'COALESCE(p.is_discoverable, 1) = 1',
     ];
     const params = [gender, userId];
 
@@ -1898,6 +2118,8 @@ app.get('/api/mat/profiles', authenticateUser, async (req, res) => {
         : (interestMap[p.id] ? interestMap[p.id].status : null);
 
       return toPublicProfile(p, {
+        isOwner: false,
+        isViewerVerified,
         isSaved: savedSet.has(p.id),
         isConnected,
         isInterestSent,
@@ -1942,9 +2164,13 @@ app.get('/api/mat/profiles/:profileId/public', authenticateUser, async (req, res
       `SELECT * FROM mat_profiles WHERE id = ? AND status = 'published' AND user_id != ?`,
       [profileId, userId]
     );
-    if (!rows.length) {
-      return res.status(404).json({ success: false, message: 'Profile not found or not available.' });
+    const target = rows[0];
+    if (target.is_discoverable === 0) {
+      return res.status(404).json({ success: false, message: 'This profile is temporarily hidden by the member.' });
     }
+
+    const [viewerProf] = await pool.query('SELECT is_verified FROM mat_profiles WHERE user_id = ?', [userId]);
+    const isViewerVerified = viewerProf.length ? Boolean(viewerProf[0].is_verified) : false;
 
     const [savedRows] = await pool.query(
       'SELECT id FROM mat_saved_profiles WHERE user_id = ? AND saved_profile_id = ?',
@@ -1954,10 +2180,14 @@ app.get('/api/mat/profiles/:profileId/public', authenticateUser, async (req, res
       'SELECT status FROM mat_interests WHERE sender_user_id = ? AND receiver_profile_id = ?',
       [userId, profileId]
     );
+    const isConnected = interestRows.length > 0 && interestRows[0].status === 'accepted';
 
     return res.status(200).json({
       success: true,
-      profile: toPublicProfile(rows[0], {
+      profile: toPublicProfile(target, {
+        isOwner: false,
+        isViewerVerified,
+        isConnected,
         isSaved: savedRows.length > 0,
         isInterestSent: interestRows.length > 0 && interestRows[0].status !== 'withdrawn',
         interestStatus: interestRows[0]?.status || null,
@@ -1993,6 +2223,10 @@ app.get('/api/mat/profiles/:profileId/full', authenticateUser, async (req, res) 
     const isOwner = profile.user_id === userId;
 
     if (!isOwner) {
+      if (profile.is_discoverable === 0) {
+        return res.status(404).json({ success: false, message: 'This profile is temporarily hidden by the member.' });
+      }
+
       // Check accepted interest between the two parties
       const [acceptedRows] = await pool.query(`
         SELECT id FROM mat_interests
@@ -2011,8 +2245,12 @@ app.get('/api/mat/profiles/:profileId/full', authenticateUser, async (req, res) 
       }
     }
 
-    const meta = {};
+    const meta = { isOwner };
     if (!isOwner) {
+      const [viewerProf] = await pool.query('SELECT is_verified FROM mat_profiles WHERE user_id = ?', [userId]);
+      meta.isViewerVerified = viewerProf.length ? Boolean(viewerProf[0].is_verified) : false;
+      meta.isConnected = true; // since accepted interest was verified
+
       const [savedRows] = await pool.query(
         'SELECT id FROM mat_saved_profiles WHERE user_id = ? AND saved_profile_id = ?',
         [userId, profileId]
@@ -2133,7 +2371,7 @@ app.post('/api/mat/profiles/:profileId/view', authenticateUser, async (req, res)
     if (isNaN(profileId)) return res.status(400).json({ success: false, message: 'Invalid profile ID.' });
 
     // Validate target exists
-    const [profRows] = await pool.query('SELECT user_id FROM mat_profiles WHERE id = ?', [profileId]);
+    const [profRows] = await pool.query('SELECT user_id, notify_visitors FROM mat_profiles WHERE id = ?', [profileId]);
     if (!profRows.length) {
       return res.status(404).json({ success: false, message: 'Profile not found.' });
     }
@@ -2147,20 +2385,60 @@ app.post('/api/mat/profiles/:profileId/view', authenticateUser, async (req, res)
 
     // Check if viewer already viewed this profile today
     const [existing] = await pool.query(
-      'SELECT id FROM mat_profile_views WHERE viewer_user_id = ? AND profile_id = ? AND view_date = ?',
+      'SELECT id, total_views FROM mat_profile_views WHERE viewer_user_id = ? AND profile_id = ? AND view_date = ?',
       [userId, profileId, today]
     );
 
     if (existing.length) {
-      // Touch last_viewed_at timestamp only (does not inflate unique views or counter)
+      const newTotal = (parseInt(existing[0].total_views || '1', 10)) + 1;
       await pool.query(
-        'UPDATE mat_profile_views SET last_viewed_at = NOW() WHERE id = ?',
-        [existing[0].id]
+        'UPDATE mat_profile_views SET total_views = ?, last_viewed_at = NOW() WHERE id = ?',
+        [newTotal, existing[0].id]
       );
-      return res.status(200).json({ success: true, message: 'View already recorded today.', deduplicated: true });
+      await pool.query('UPDATE mat_profiles SET more_info_clicks = more_info_clicks + 1 WHERE id = ?', [profileId]);
+
+      // Requirement: Notify ONLY if the same person views more than 2 times per day (>2), otherwise do not show
+      if (newTotal > 2) {
+        const targetUserId = profRows[0].user_id;
+        const targetNotifyVisitors = profRows[0].notify_visitors !== undefined && profRows[0].notify_visitors !== null
+          ? profRows[0].notify_visitors
+          : 1;
+
+        if (Number(targetNotifyVisitors) !== 0) {
+          const [viewerProf] = await pool.query('SELECT id, full_name FROM mat_profiles WHERE user_id = ?', [userId]);
+          const viewerProfId = viewerProf[0]?.id || null;
+          const viewerName = viewerProf[0]?.full_name || 'A prospective partner';
+
+          if (viewerProfId) {
+            // Deduplicate: notify once per day for this frequent viewer
+            const [alreadyNotified] = await pool.query(`
+              SELECT id FROM mat_notifications
+              WHERE user_id = ?
+                AND type = 'profile_viewed'
+                AND related_profile_id = ?
+                AND DATE(created_at) = ?
+              LIMIT 1
+            `, [targetUserId, viewerProfId, today]);
+
+            if (!alreadyNotified.length) {
+              await pool.query(`
+                INSERT INTO mat_notifications (user_id, type, title, message, related_profile_id)
+                VALUES (?, 'profile_viewed', ?, ?, ?)
+              `, [
+                targetUserId,
+                '👀 Profile Visitor Alert',
+                `${viewerName} has viewed your profile ${newTotal} times today!`,
+                viewerProfId
+              ]);
+            }
+          }
+        }
+      }
+
+      return res.status(200).json({ success: true, message: 'View recorded.', deduplicated: true, totalViews: newTotal });
     }
 
-    // First view today
+    // First view today (count = 1, does not exceed 2 views, so no notification is sent)
     await pool.query(`
       INSERT INTO mat_profile_views (profile_id, viewer_user_id, view_date, total_views)
       VALUES (?, ?, ?, 1)
@@ -2169,7 +2447,7 @@ app.post('/api/mat/profiles/:profileId/view', authenticateUser, async (req, res)
     // Increment profile's more_info_clicks counter
     await pool.query('UPDATE mat_profiles SET more_info_clicks = more_info_clicks + 1 WHERE id = ?', [profileId]);
 
-    return res.status(200).json({ success: true, message: 'View recorded.', deduplicated: false });
+    return res.status(200).json({ success: true, message: 'View recorded.', deduplicated: false, totalViews: 1 });
   } catch (err) {
     console.error('[Views] POST error:', err.message);
     return res.status(500).json({ success: false, message: 'Error recording view.' });
@@ -2478,7 +2756,7 @@ app.post('/api/mat/interests/:receiverProfileId', authenticateUser, async (req, 
 
     // Get receiver profile
     const [receiverProfRows] = await conn.query(
-      `SELECT id, user_id FROM mat_profiles WHERE id = ? AND status = 'published'`,
+      `SELECT id, user_id, notify_interests FROM mat_profiles WHERE id = ? AND status = 'published'`,
       [receiverProfileId]
     );
     if (!receiverProfRows.length) {
@@ -2555,19 +2833,25 @@ app.post('/api/mat/interests/:receiverProfileId', authenticateUser, async (req, 
     const [senderNameRows] = await conn.query('SELECT full_name FROM mat_profiles WHERE id = ?', [senderProfileId]);
     const senderName = senderNameRows[0]?.full_name || 'Someone';
 
-    // Create notification for receiver (idempotent on interest_id)
-    await conn.query(`
-      INSERT INTO mat_notifications
-        (user_id, type, title, message, related_profile_id, related_interest_id)
-      VALUES (?, 'interest_received', ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE updated_at = NOW()
-    `, [
-      receiverUserId,
-      '💍 New Interest Received',
-      `${senderName} has expressed interest in your profile!`,
-      senderProfileId,
-      interestId
-    ]);
+    // Create notification for receiver only if notify_interests is enabled
+    const receiverNotifyInterests = receiverProfRows[0].notify_interests !== undefined && receiverProfRows[0].notify_interests !== null
+      ? receiverProfRows[0].notify_interests
+      : 1;
+
+    if (Number(receiverNotifyInterests) !== 0) {
+      await conn.query(`
+        INSERT INTO mat_notifications
+          (user_id, type, title, message, related_profile_id, related_interest_id)
+        VALUES (?, 'interest_received', ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE updated_at = NOW()
+      `, [
+        receiverUserId,
+        '💍 New Interest Received',
+        `${senderName} has expressed interest in your profile!`,
+        senderProfileId,
+        interestId
+      ]);
+    }
 
     await conn.commit();
 
@@ -2781,7 +3065,7 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
 
     // Create mat_matches record + notification for sender
     const [senderProfRows] = await conn.query(
-      'SELECT full_name FROM mat_profiles WHERE id = ?', [interest.sender_profile_id]
+      'SELECT full_name, notify_interests FROM mat_profiles WHERE id = ?', [interest.sender_profile_id]
     );
     const [receiverProfRows] = await conn.query(
       'SELECT full_name, compatibility_score FROM mat_profiles WHERE id = ?', [interest.receiver_profile_id]
@@ -2801,18 +3085,24 @@ app.patch('/api/mat/interests/:interestId', authenticateUser, async (req, res) =
       interestId, score
     ]);
 
-    // Notify sender that their interest was accepted
-    await conn.query(`
-      INSERT INTO mat_notifications
-        (user_id, type, title, message, related_profile_id, related_interest_id)
-      VALUES (?, 'interest_accepted', ?, ?, ?, ?)
-    `, [
-      interest.sender_user_id,
-      '🎉 Interest Accepted!',
-      `${receiverName} has accepted your interest! You can now view their full profile.`,
-      interest.receiver_profile_id,
-      interestId
-    ]);
+    // Notify sender that their interest was accepted only if notify_interests is enabled
+    const senderNotifyInterests = senderProfRows[0]?.notify_interests !== undefined && senderProfRows[0]?.notify_interests !== null
+      ? senderProfRows[0]?.notify_interests
+      : 1;
+
+    if (Number(senderNotifyInterests) !== 0) {
+      await conn.query(`
+        INSERT INTO mat_notifications
+          (user_id, type, title, message, related_profile_id, related_interest_id)
+        VALUES (?, 'interest_accepted', ?, ?, ?, ?)
+      `, [
+        interest.sender_user_id,
+        '🎉 Interest Accepted!',
+        `${receiverName} has accepted your interest! You can now view their full profile.`,
+        interest.receiver_profile_id,
+        interestId
+      ]);
+    }
 
     await conn.commit();
 
@@ -2959,6 +3249,9 @@ app.get('/api/mat/matches', authenticateUser, async (req, res) => {
 app.get('/api/mat/notifications', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.id;
+    // Check and trigger High Match (80%+) notifications if toggle is ON
+    await checkAndNotifyHighMatches(userId);
+
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
     const limit = Math.min(50, parseInt(req.query.limit || '30', 10));
     const offset = (page - 1) * limit;

@@ -133,6 +133,46 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        if (user?.email != null && user!.email.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.email_outlined, size: 12, color: AppTheme.textSecondary),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  user.email,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppTheme.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.burgundy.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.lock_rounded, size: 9, color: AppTheme.burgundy),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'Private',
+                                      style: TextStyle(fontSize: 9, color: AppTheme.burgundy, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -157,112 +197,6 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // Membership & Discovery Quota Banner
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: subscription.isUnlimited
-                    ? const LinearGradient(
-                        colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      )
-                    : const LinearGradient(
-                        colors: [Color(0xFFF8FAFC), Color(0xFFF1F5F9)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: subscription.isUnlimited
-                      ? AppTheme.gold.withValues(alpha: 0.5)
-                      : const Color(0xFFE2E8F0),
-                ),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: subscription.isUnlimited
-                              ? AppTheme.gold.withValues(alpha: 0.2)
-                              : AppTheme.burgundy.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          subscription.isUnlimited ? Icons.workspace_premium_rounded : Icons.flash_on_rounded,
-                          color: subscription.isUnlimited ? const Color(0xFFB45309) : AppTheme.burgundy,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              subscription.isUnlimited ? 'Unlimited Discovery Plan' : 'Free Match Discovery',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              subscription.isUnlimited
-                                  ? 'Active • Unlimited profiles & swipes worldwide'
-                                  : '${subscription.swipesRemainingToday} of ${subscription.dailyLimit} daily swipes remaining today',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (!subscription.isUnlimited)
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.burgundy,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          onPressed: () => DailyLimitModal.show(context),
-                          child: const Text(
-                            'Upgrade',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (!subscription.isUnlimited) ...[
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: subscription.dailyLimit > 0
-                            ? (subscription.swipesUsedToday / subscription.dailyLimit).clamp(0.0, 1.0)
-                            : 0.0,
-                        minHeight: 6,
-                        backgroundColor: Colors.white,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          subscription.swipesRemainingToday <= 2 ? AppTheme.error : AppTheme.burgundy,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -342,6 +276,15 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
                 onTap: () => Navigator.pushNamed(context, '/privacy-settings'),
               ),
               _buildMenuItem(
+                icon: Icons.card_membership_rounded,
+                title: 'Subscription',
+                subtitle: subscription.isUnlimited
+                    ? 'Active Premium Member • 1 Year Unlimited'
+                    : 'Basic Free Plan • Compare & Upgrade to Premium',
+                badgeText: subscription.isUnlimited ? 'ACTIVE' : 'UPGRADE',
+                onTap: () => Navigator.pushNamed(context, '/subscription'),
+              ),
+              _buildMenuItem(
                 icon: Icons.help_outline_rounded,
                 title: 'Help & Customer Support',
                 subtitle: 'FAQs, contact team & grievance redressal',
@@ -362,13 +305,16 @@ class _SettingsProfileScreenState extends State<SettingsProfileScreen> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.textPrimary,
-                  side: const BorderSide(color: AppTheme.cardBorder),
+                  foregroundColor: AppTheme.error,
+                  side: const BorderSide(color: AppTheme.error, width: 1.5),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 icon: const Icon(Icons.logout_rounded, size: 18, color: AppTheme.error),
-                label: const Text('Logout', style: TextStyle(fontWeight: FontWeight.w600)),
+                label: const Text(
+                  'Logout',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.error),
+                ),
                 onPressed: () => _handleLogout(context),
               ),
             ),

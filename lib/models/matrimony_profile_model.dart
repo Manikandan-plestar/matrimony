@@ -61,6 +61,12 @@ class MatrimonyProfileModel {
   bool isInterestSent;
   final String? interestStatus;
 
+  // Privacy & Shield flags
+  final bool isPhotoShielded;
+  final bool photoShield;
+  final bool isDiscoverable;
+  final bool protectPhone;
+
   MatrimonyProfileModel({
     required this.id,
     required this.profileId,
@@ -108,6 +114,10 @@ class MatrimonyProfileModel {
     this.isSaved = false,
     this.isInterestSent = false,
     this.interestStatus,
+    this.isPhotoShielded = false,
+    this.photoShield = false,
+    this.isDiscoverable = true,
+    this.protectPhone = true,
   });
 
   MatrimonyProfileModel copyWith({

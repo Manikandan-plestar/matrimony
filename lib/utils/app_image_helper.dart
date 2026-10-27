@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
@@ -54,6 +55,7 @@ class AppImageHelper {
     double? height,
     BoxFit fit = BoxFit.cover,
     BorderRadius? borderRadius,
+    bool isShielded = false,
   }) {
     final normalized = normalizePhotoUrl(url);
 
@@ -111,6 +113,62 @@ class AppImageHelper {
       } catch (_) {
         imageWidget = fallbackWidget();
       }
+    }
+
+    // Photo Privacy Shield overlay
+    if (isShielded) {
+      imageWidget = Stack(
+        alignment: Alignment.center,
+        children: [
+          imageWidget,
+          Positioned.fill(
+            child: ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.gold, width: 1.5),
+                        ),
+                        child: const Icon(Icons.shield_rounded, color: AppTheme.gold, size: 32),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Photo Shielded',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Visible only to verified and connected members',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10.5,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
     }
 
     if (borderRadius != null) {

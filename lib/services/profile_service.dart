@@ -130,4 +130,26 @@ class ProfileService {
       // Non-critical — swallow errors silently
     }
   }
+
+  /// Fetch user's privacy and notification settings from backend
+  static Future<Map<String, dynamic>?> fetchSettings() async {
+    try {
+      final result = await ApiService.get('/api/mat/settings');
+      if (result['success'] == true && result['settings'] is Map<String, dynamic>) {
+        return result['settings'] as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Update user's privacy and notification settings on backend
+  static Future<bool> updateSettings(Map<String, dynamic> data) async {
+    try {
+      final result = await ApiService.patch('/api/mat/settings', body: data);
+      return result['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
+

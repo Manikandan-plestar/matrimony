@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/theme.dart';
+import '../services/profile_service.dart';
 import '../providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
 import '../providers/discovery_provider.dart';
@@ -28,14 +29,15 @@ class StaticSettingsScreen extends StatefulWidget {
 }
 
 class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
-  // Settings Toggles with local persistence
+  // ── Privacy Settings (synced with backend + local prefs) ──
   bool _profileDiscoverable = true;
-  bool _hideContactNumber = true;
-  bool _pushNotifications = true;
-  bool _onlineStatusVisible = true;
-  bool _blurPhotosUntilAccept = false;
-  bool _weeklyMatchDigest = true;
-  bool _emailAlerts = true;
+  bool _protectContactNumber = true;
+  bool _photoPrivacyShield = false;
+
+  // ── Notification Settings ──
+  bool _matchAlert80 = true; // High compatibility (80%+) alert (backend synced)
+  bool _interestAlerts = true; // Instant interest & connection alerts (UI toggle)
+  bool _visitorDigest = true; // Profile visitor & activity digest (UI toggle)
 
   @override
   void initState() {
@@ -45,17 +47,50 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    // 1. Initial load from local prefs for instant UI response
     if (mounted) {
       setState(() {
         _profileDiscoverable = prefs.getBool('settings_discoverable') ?? true;
-        _hideContactNumber = prefs.getBool('settings_privacy_mode') ?? true;
-        _pushNotifications = prefs.getBool('settings_notifications') ?? true;
-        _onlineStatusVisible = prefs.getBool('settings_online_status') ?? true;
-        _blurPhotosUntilAccept = prefs.getBool('settings_blur_photo') ?? false;
-        _weeklyMatchDigest = prefs.getBool('settings_weekly_digest') ?? true;
-        _emailAlerts = prefs.getBool('settings_email_alerts') ?? true;
+        _protectContactNumber = prefs.getBool('settings_protect_phone') ?? true;
+        _photoPrivacyShield = prefs.getBool('settings_photo_shield') ?? false;
+        _matchAlert80 = prefs.getBool('settings_match_alert_80') ?? true;
+        _interestAlerts = prefs.getBool('settings_interest_alerts') ?? true;
+        _visitorDigest = prefs.getBool('settings_visitor_digest') ?? true;
       });
     }
+
+    // 2. Fetch and sync from backend
+    try {
+      final backendSettings = await ProfileService.fetchSettings();
+      if (backendSettings != null && mounted) {
+        setState(() {
+          if (backendSettings['profileDiscoverable'] is bool) {
+            _profileDiscoverable = backendSettings['profileDiscoverable'] as bool;
+            prefs.setBool('settings_discoverable', _profileDiscoverable);
+          }
+          if (backendSettings['protectPhone'] is bool) {
+            _protectContactNumber = backendSettings['protectPhone'] as bool;
+            prefs.setBool('settings_protect_phone', _protectContactNumber);
+          }
+          if (backendSettings['photoShield'] is bool) {
+            _photoPrivacyShield = backendSettings['photoShield'] as bool;
+            prefs.setBool('settings_photo_shield', _photoPrivacyShield);
+          }
+          if (backendSettings['notifyHighMatch'] is bool) {
+            _matchAlert80 = backendSettings['notifyHighMatch'] as bool;
+            prefs.setBool('settings_match_alert_80', _matchAlert80);
+          }
+          if (backendSettings['notifyInterests'] is bool) {
+            _interestAlerts = backendSettings['notifyInterests'] as bool;
+            prefs.setBool('settings_interest_alerts', _interestAlerts);
+          }
+          if (backendSettings['notifyVisitors'] is bool) {
+            _visitorDigest = backendSettings['notifyVisitors'] as bool;
+            prefs.setBool('settings_visitor_digest', _visitorDigest);
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _savePreference(String key, bool val) async {
@@ -77,8 +112,11 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
     }
   }
 
-  /// Full Settings view: Displays setting toggle options with "Delete My Account" placed below
+  /// Full Settings view: Displays split Privacy and Notification sections with Delete My Account below
   Widget _buildSettingsView() {
+    final user = context.watch<AuthProvider>().currentUser;
+    final userEmail = (user?.email.isNotEmpty ?? false) ? user!.email : null;
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -87,88 +125,278 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         children: [
-          _buildSectionHeader('Preferences & Privacy Toggles'),
+          // ════════════════════════════════════════════════════════
+          // 0. LOGGED-IN ACCOUNT (Private to user only)
+          // ════════════════════════════════════════════════════════
+          _buildSectionHeader('Account Information'),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppTheme.cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.burgundy.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.email_outlined, color: AppTheme.burgundy, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Logged-in Email',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        userEmail ?? 'Not logged in',
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Icon(Icons.lock_rounded, size: 12, color: AppTheme.burgundy.withValues(alpha: 0.8)),
+                          const SizedBox(width: 4),
+                          const Expanded(
+                            child: Text(
+                              'Private to you • Never shown to other profiles',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Divider(height: 1, color: AppTheme.cardBorder),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () => Navigator.pushNamed(context, '/subscription'),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Icon(
+                                context.watch<SubscriptionProvider>().isUnlimited
+                                    ? Icons.workspace_premium_rounded
+                                    : Icons.card_membership_rounded,
+                                size: 16,
+                                color: context.watch<SubscriptionProvider>().isUnlimited
+                                    ? const Color(0xFFB45309)
+                                    : AppTheme.burgundy,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  context.watch<SubscriptionProvider>().isUnlimited
+                                      ? 'Subscription: Unlimited Premium (Active)'
+                                      : 'Subscription: Basic Plan • Upgrade to Premium',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: context.watch<SubscriptionProvider>().isUnlimited
+                                        ? const Color(0xFFB45309)
+                                        : AppTheme.burgundy,
+                                  ),
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right_rounded, size: 18, color: AppTheme.textSecondary),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // ════════════════════════════════════════════════════════
+          // 1. PRIVACY SETTINGS
+          // ════════════════════════════════════════════════════════
+          _buildSectionHeader('Privacy Settings'),
 
           // 1. Profile Discoverability
           _buildSwitchTile(
             icon: Icons.visibility_rounded,
             title: 'Profile Discoverability',
             subtitle: _profileDiscoverable
-                ? 'Visible in Groom & Bride discovery feeds'
-                : 'Profile paused from public discovery feeds',
+                ? 'Visible — Profile is shown in discovery feeds'
+                : 'Hidden — Profile is temporarily not shown to anyone in the app',
             value: _profileDiscoverable,
             onChanged: (v) {
               setState(() => _profileDiscoverable = v);
               _savePreference('settings_discoverable', v);
+              ProfileService.updateSettings({'profileDiscoverable': v});
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   duration: const Duration(seconds: 2),
                   backgroundColor: v ? AppTheme.burgundy : AppTheme.textSecondary,
-                  content: Text(v ? 'Profile is now discoverable.' : 'Profile paused from discovery feeds.'),
+                  content: Text(v
+                      ? 'Profile is now discoverable in feeds.'
+                      : 'Profile paused. It is temporarily not shown to anyone in the application.'),
                 ),
               );
             },
           ),
 
-          // 2. Protect Contact Number
+          // 2. Protect Mobile Number
           _buildSwitchTile(
             icon: Icons.phonelink_lock_rounded,
-            title: 'Protect Contact Number',
-            subtitle: _hideContactNumber
-                ? 'Only mutual accepted matches can view phone number'
-                : 'Contact number visible to all registered members',
-            value: _hideContactNumber,
+            title: 'Protect Mobile Number',
+            subtitle: _protectContactNumber
+                ? 'Protected — Only verified account holders can view mobile number'
+                : 'Hidden — Mobile number not shown to anyone (even mutual connections)',
+            value: _protectContactNumber,
             onChanged: (v) {
-              setState(() => _hideContactNumber = v);
-              _savePreference('settings_privacy_mode', v);
+              setState(() => _protectContactNumber = v);
+              _savePreference('settings_protect_phone', v);
+              ProfileService.updateSettings({'protectPhone': v});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppTheme.burgundy,
+                  content: Text(v
+                      ? 'Mobile number visible only to verified accounts.'
+                      : 'Mobile number hidden from everyone, even mutually connected users.'),
+                ),
+              );
             },
           ),
 
-          // 3. Match & Interest Alerts
+          // 3. Photo Privacy Shield
+          _buildSwitchTile(
+            icon: Icons.shield_outlined,
+            title: 'Photo Privacy Shield',
+            subtitle: _photoPrivacyShield
+                ? 'Shield ON — Photos hidden from normal users; only verified & mutual connects can view'
+                : 'Shield OFF — Profile photographs visible to registered members',
+            value: _photoPrivacyShield,
+            onChanged: (v) {
+              setState(() => _photoPrivacyShield = v);
+              _savePreference('settings_photo_shield', v);
+              ProfileService.updateSettings({'photoShield': v});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppTheme.burgundy,
+                  content: Text(v
+                      ? 'Photo Privacy Shield active. Standard users cannot view your photos.'
+                      : 'Photo Privacy Shield deactivated.'),
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 18),
+
+          // ════════════════════════════════════════════════════════
+          // 2. NOTIFICATION SETTINGS
+          // ════════════════════════════════════════════════════════
+          _buildSectionHeader('Notification Settings'),
+
+          // 1. High Compatibility Match Alert (80%+)
+          _buildSwitchTile(
+            icon: Icons.stars_rounded,
+            title: 'Match Alert (80%+ Compatibility)',
+            subtitle: _matchAlert80
+                ? 'Active — Instant notification when a candidate profile is 80%+ match'
+                : 'Paused — Do not alert for high compatibility matches',
+            value: _matchAlert80,
+            onChanged: (v) {
+              setState(() => _matchAlert80 = v);
+              _savePreference('settings_match_alert_80', v);
+              ProfileService.updateSettings({'notifyHighMatch': v});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppTheme.burgundy,
+                  content: Text(v
+                      ? '80%+ Match Alert active. You will be notified for high matches.'
+                      : 'High compatibility match alerts paused.'),
+                ),
+              );
+            },
+          ),
+
+          // 2. Instant Interest & Connection Alerts (synced with backend)
           _buildSwitchTile(
             icon: Icons.notifications_active_outlined,
-            title: 'Match & Interest Alerts',
-            subtitle: 'Push notifications for views, interests & connections',
-            value: _pushNotifications,
+            title: 'Instant Interest & Connection Alerts',
+            subtitle: _interestAlerts
+                ? 'Active — Instant alerts for new interest requests and accepted matches'
+                : 'Paused — Interest and connection alerts disabled',
+            value: _interestAlerts,
             onChanged: (v) {
-              setState(() => _pushNotifications = v);
-              _savePreference('settings_notifications', v);
+              setState(() => _interestAlerts = v);
+              _savePreference('settings_interest_alerts', v);
+              ProfileService.updateSettings({'notifyInterests': v});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppTheme.burgundy,
+                  content: Text(v
+                      ? 'Instant interest & connection alerts enabled.'
+                      : 'Interest and connection alerts paused.'),
+                ),
+              );
             },
           ),
 
-          // 4. Online Activity Status
+          // 3. Profile Visitor Digest (synced with backend: notifies when viewed > 2 times/day)
           _buildSwitchTile(
-            icon: Icons.access_time_rounded,
-            title: 'Online Activity Status',
-            subtitle: 'Show prospective partners when you were recently active',
-            value: _onlineStatusVisible,
+            icon: Icons.visibility_outlined,
+            title: 'Profile Visitor Digest',
+            subtitle: _visitorDigest
+                ? 'Active — Notify when the same person views your profile more than 2 times a day'
+                : 'Paused — Visitor notifications disabled',
+            value: _visitorDigest,
             onChanged: (v) {
-              setState(() => _onlineStatusVisible = v);
-              _savePreference('settings_online_status', v);
-            },
-          ),
-
-          // 5. Photo Privacy Shield
-          _buildSwitchTile(
-            icon: Icons.photo_filter_rounded,
-            title: 'Photo Privacy Shield',
-            subtitle: 'Blur photograph for unverified visitors until interest is accepted',
-            value: _blurPhotosUntilAccept,
-            onChanged: (v) {
-              setState(() => _blurPhotosUntilAccept = v);
-              _savePreference('settings_blur_photo', v);
-            },
-          ),
-
-          // 6. Weekly Match Digest
-          _buildSwitchTile(
-            icon: Icons.email_outlined,
-            title: 'Weekly Match Digest',
-            subtitle: 'Email summary of high-compatibility matches in your city',
-            value: _weeklyMatchDigest,
-            onChanged: (v) {
-              setState(() => _weeklyMatchDigest = v);
-              _savePreference('settings_weekly_digest', v);
+              setState(() => _visitorDigest = v);
+              _savePreference('settings_visitor_digest', v);
+              ProfileService.updateSettings({'notifyVisitors': v});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppTheme.burgundy,
+                  content: Text(v
+                      ? 'Visitor alerts enabled (notifies when viewed more than 2 times a day).'
+                      : 'Visitor notifications paused.'),
+                ),
+              );
             },
           ),
 
@@ -413,33 +641,60 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         children: [
           _buildSwitchTile(
+            icon: Icons.stars_rounded,
+            title: 'Match Alert (80%+ Compatibility)',
+            subtitle: _matchAlert80
+                ? 'Active — Instant notification when a candidate profile is 80%+ match'
+                : 'Paused — Do not alert for high compatibility matches',
+            value: _matchAlert80,
+            onChanged: (v) {
+              setState(() => _matchAlert80 = v);
+              _savePreference('settings_match_alert_80', v);
+              ProfileService.updateSettings({'notifyHighMatch': v});
+            },
+          ),
+          _buildSwitchTile(
             icon: Icons.notifications_active_outlined,
-            title: 'New Matches & Invitations',
-            subtitle: 'Receive alerts when someone expresses interest or likes your bio.',
-            value: _pushNotifications,
+            title: 'Instant Interest & Connection Alerts',
+            subtitle: _interestAlerts
+                ? 'Active — Instant alerts for new interest requests and accepted matches'
+                : 'Paused — Interest and connection alerts disabled',
+            value: _interestAlerts,
             onChanged: (v) {
-              setState(() => _pushNotifications = v);
-              _savePreference('settings_notifications', v);
+              setState(() => _interestAlerts = v);
+              _savePreference('settings_interest_alerts', v);
+              ProfileService.updateSettings({'notifyInterests': v});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppTheme.burgundy,
+                  content: Text(v
+                      ? 'Instant interest & connection alerts enabled.'
+                      : 'Interest and connection alerts paused.'),
+                ),
+              );
             },
           ),
           _buildSwitchTile(
-            icon: Icons.email_outlined,
-            title: 'Weekly Digest',
-            subtitle: 'Email summary of high-compatibility matches in your city.',
-            value: _weeklyMatchDigest,
+            icon: Icons.visibility_outlined,
+            title: 'Profile Visitor Digest',
+            subtitle: _visitorDigest
+                ? 'Active — Notify when the same person views your profile more than 2 times a day'
+                : 'Paused — Visitor notifications disabled',
+            value: _visitorDigest,
             onChanged: (v) {
-              setState(() => _weeklyMatchDigest = v);
-              _savePreference('settings_weekly_digest', v);
-            },
-          ),
-          _buildSwitchTile(
-            icon: Icons.security_rounded,
-            title: 'Email Security Notices',
-            subtitle: 'Account login alerts and security confirmations.',
-            value: _emailAlerts,
-            onChanged: (v) {
-              setState(() => _emailAlerts = v);
-              _savePreference('settings_email_alerts', v);
+              setState(() => _visitorDigest = v);
+              _savePreference('settings_visitor_digest', v);
+              ProfileService.updateSettings({'notifyVisitors': v});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppTheme.burgundy,
+                  content: Text(v
+                      ? 'Visitor alerts enabled (notifies when viewed more than 2 times a day).'
+                      : 'Visitor notifications paused.'),
+                ),
+              );
             },
           ),
         ],
