@@ -127,7 +127,7 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
 
     try {
       final locationService = context.read<LocationService>();
-      final location = await locationService.fetchCurrentLocation();
+      final location = await locationService.fetchCurrentLocation(context);
 
       if (location != null && mounted) {
         setState(() {
@@ -536,11 +536,15 @@ class _PublishWizardScreenState extends State<PublishWizardScreen> {
               final picked = await showDatePicker(
                 context: context,
                 initialDate: p.draftDateOfBirth ?? DateTime(1997, 1, 1),
-                firstDate: DateTime(1965),
-                lastDate: DateTime(2006),
+                firstDate: DateTime(1960),
+                lastDate: DateTime.now().subtract(const Duration(days: 365 * 18)),
               );
               if (picked != null) {
-                final calculatedAge = DateTime.now().year - picked.year;
+                final now = DateTime.now();
+                int calculatedAge = now.year - picked.year;
+                if (now.month < picked.month || (now.month == picked.month && now.day < picked.day)) {
+                  calculatedAge--;
+                }
                 setState(() {
                   p.draftDateOfBirth = picked;
                   p.draftAge = calculatedAge;

@@ -242,7 +242,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           Text(
             isPremium
                 ? 'Unlimited Premium Active'
-                : 'Upgrade to Unlimited Swipes',
+                : 'Upgrade to Premium Membership',
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w900,
@@ -253,8 +253,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           const SizedBox(height: 6),
           Text(
             isPremium
-                ? 'You have unrestricted access to all candidate profiles, full visitor insights, and priority matchmaking for 1 full year.'
-                : 'Connect with your life partner faster with unlimited daily swipes, profile visitor access, and priority visibility.',
+                ? 'You have unrestricted access to all candidate profiles, full visitor insights, and direct verified contacts for 1 full year.'
+                : 'Connect with your life partner faster with Unlimited Daily Swipes, Full Visitor Access, and Direct Contact Numbers.',
             style: TextStyle(
               fontSize: 13,
               color: Colors.white.withValues(alpha: 0.92),
@@ -598,7 +598,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Your 1-Year Unlimited Subscription is active! You can view unlimited profiles every day, access visitors, and enjoy all VIP benefits.',
+            'Your 1-Year Premium Membership is active! You can view unlimited profiles every day, see who visited your profile, and enjoy all VIP benefits.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
@@ -620,7 +620,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 Icon(Icons.stars_rounded, size: 16, color: AppTheme.gold),
                 SizedBox(width: 6),
                 Text(
-                  'Plan: Unlimited Swipe Plan (₹499 / 1 Year)',
+                  'Plan: Premium Membership (₹499 / 1 Year)',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,

@@ -65,8 +65,8 @@ class SubscriptionService {
           'gateway': gateway,
           'platform': platform,
           'purchaseToken': purchaseToken,
-          'packageName': 'matrimonyer.matrimony.com',
-          'productId': 'matrimonyer_unlimited_swipes_499',
+          'packageName': 'matrimonyapp.matrimonyer.com',
+          'productId': 'premium_yearly_499',
         },
       );
 

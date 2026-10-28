@@ -172,7 +172,7 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Unlimited Swipe Plan',
+                          'Premium Membership',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -206,11 +206,11 @@ class _DailyLimitModalState extends State<DailyLimitModal> {
                 const SizedBox(height: 14),
                 const Divider(color: Color(0xFFFED7AA), height: 1),
                 const SizedBox(height: 14),
-                _buildBenefitRow(Icons.all_inclusive_rounded, 'Swipe unlimited profiles without any daily limit.'),
+                _buildBenefitRow(Icons.all_inclusive_rounded, 'Unlimited Daily Swipes: Browse candidate profiles without limits.'),
                 const SizedBox(height: 8),
-                _buildBenefitRow(Icons.visibility_rounded, 'Access Profile Visitors & weekly analytics chart.'),
+                _buildBenefitRow(Icons.visibility_rounded, 'Profile Visitors: See who viewed and showed interest in your profile.'),
                 const SizedBox(height: 8),
-                _buildBenefitRow(Icons.sync_alt_rounded, 'Applies across Groom and Bride discovery feeds for 1 year.'),
+                _buildBenefitRow(Icons.verified_user_rounded, 'Direct Verified Contacts: Unlock phone numbers & priority matching for 1 year.'),
               ],
             ),
           ),

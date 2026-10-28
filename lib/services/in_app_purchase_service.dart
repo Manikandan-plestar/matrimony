@@ -65,7 +65,8 @@ class InAppPurchaseService {
   static InAppPurchaseService get instance => _instance;
   InAppPurchaseService._internal();
 
-  static const String unlimitedSwipeProductId = 'matrimonyer_unlimited_swipes_499';
+  static const String premiumProductId = 'premium_yearly_499';
+  static const String unlimitedSwipeProductId = premiumProductId;
   static const double planPrice = 499.0;
 
   final InAppPurchase _iap = InAppPurchase.instance;

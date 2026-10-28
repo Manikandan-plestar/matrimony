@@ -213,7 +213,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
 
     try {
       final locationService = context.read<LocationService>();
-      final location = await locationService.fetchCurrentLocation();
+      final location = await locationService.fetchCurrentLocation(context);
 
       if (location != null && mounted) {
         setState(() {

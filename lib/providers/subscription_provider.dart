@@ -86,7 +86,7 @@ class SubscriptionProvider extends ChangeNotifier {
       if (res.allowed) {
         _status = SwipeStatusModel(
           isUnlimited: res.isUnlimited,
-          planName: res.isUnlimited ? 'Unlimited Swipe Plan' : _status.planName,
+          planName: res.isUnlimited ? 'Premium Membership' : _status.planName,
           planPrice: _status.planPrice,
           upgradePrice: _status.upgradePrice,
           dailyLimit: _status.dailyLimit,
@@ -137,7 +137,7 @@ class SubscriptionProvider extends ChangeNotifier {
       if (result.success && result.isUnlimited) {
         _status = SwipeStatusModel(
           isUnlimited: true,
-          planName: 'Unlimited Swipe Plan',
+          planName: 'Premium Membership',
           planPrice: 499.0,
           upgradePrice: 499.0,
           dailyLimit: _status.dailyLimit,
@@ -181,7 +181,7 @@ class SubscriptionProvider extends ChangeNotifier {
       if (result.success) {
         _status = SwipeStatusModel(
           isUnlimited: true,
-          planName: 'Unlimited Swipe Plan',
+          planName: 'Premium Membership',
           planPrice: 499.0,
           upgradePrice: 499.0,
           dailyLimit: _status.dailyLimit,

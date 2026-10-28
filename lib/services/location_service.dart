@@ -1,6 +1,7 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import '../config/theme.dart';
 
 class LocationDetails {
   final String area;
@@ -41,8 +42,85 @@ class LocationService extends ChangeNotifier {
   bool get hasPermission => _hasPermission;
   bool get isFetching => _isFetching;
 
+  /// Google Play Mandatory: Prominent In-App Disclosure Dialog
+  /// Must be shown BEFORE requesting Android system runtime location permission.
+  static Future<bool> showProminentLocationDisclosure(BuildContext context) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.location_on_rounded, color: AppTheme.burgundy, size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Location Permission',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: AppTheme.textPrimary),
+              ),
+            ),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Matrimonyer collects location data to automatically determine your current City, State, and Country to help you discover relevant matrimonial matches nearby.',
+              style: TextStyle(fontSize: 13.5, color: AppTheme.textPrimary, height: 1.45),
+            ),
+            SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.check_circle_outline_rounded, color: AppTheme.success, size: 16),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Used only when you tap "Get GPS Address".',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.check_circle_outline_rounded, color: AppTheme.success, size: 16),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Never tracked in the background or shared with third parties.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now', style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.burgundy,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Continue', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
   /// Request location permission from the user
-  Future<bool> requestPermission() async {
+  Future<bool> requestPermission([BuildContext? context]) async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -53,6 +131,15 @@ class LocationService extends ChangeNotifier {
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
+        // Show prominent disclosure before system dialog if context is available
+        if (context != null && context.mounted) {
+          final agreed = await showProminentLocationDisclosure(context);
+          if (!agreed) {
+            _hasPermission = false;
+            notifyListeners();
+            return false;
+          }
+        }
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           _hasPermission = false;
@@ -77,9 +164,9 @@ class LocationService extends ChangeNotifier {
   }
 
   /// Safe fetch method that handles permission check and returns null on failure
-  Future<LocationDetails?> fetchCurrentLocation() async {
+  Future<LocationDetails?> fetchCurrentLocation([BuildContext? context]) async {
     try {
-      final hasPerm = await requestPermission();
+      final hasPerm = await requestPermission(context);
       if (!hasPerm) return null;
       return await getCurrentLocation();
     } catch (e) {

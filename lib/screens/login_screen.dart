@@ -8,6 +8,7 @@ import '../providers/notification_provider.dart';
 import '../providers/profile_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../widgets/common/wedding_pattern_background.dart';
+import '../widgets/modals/terms_conditions_modal.dart';
 
 /// Login screen — email input → OTP verify → main app
 ///
@@ -249,12 +250,55 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
 
-              const SizedBox(height: 12),
-              const Center(
-                child: Text(
-                  'By continuing, you agree to our Terms of Service\nand Privacy Policy.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              const SizedBox(height: 16),
+              Center(
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text(
+                      'By continuing, you agree to our ',
+                      style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                    ),
+                    InkWell(
+                      onTap: () => showTermsConditionsModal(context, initialTab: 0),
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                        child: Text(
+                          'Terms of Service',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.burgundy,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppTheme.burgundy,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      ' & ',
+                      style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                    ),
+                    InkWell(
+                      onTap: () => showTermsConditionsModal(context, initialTab: 1),
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                        child: Text(
+                          'Privacy Policy',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.burgundy,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppTheme.burgundy,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

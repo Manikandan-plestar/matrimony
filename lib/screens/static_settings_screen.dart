@@ -10,6 +10,7 @@ import '../providers/interaction_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/search_filter_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../widgets/modals/terms_conditions_modal.dart';
 
 enum SettingsScreenType {
   privacy,
@@ -805,6 +806,31 @@ class _StaticSettingsScreenState extends State<StaticSettingsScreen> {
               'Designed for genuine relationship discovery, image-first matchmaking, and seamless family harmony.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.textPrimary, fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => showTermsConditionsModal(context, initialTab: 0),
+                  icon: const Icon(Icons.description_outlined, size: 16, color: AppTheme.burgundy),
+                  label: const Text('Terms of Service', style: TextStyle(color: AppTheme.burgundy, fontSize: 13, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.rose),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () => showTermsConditionsModal(context, initialTab: 1),
+                  icon: const Icon(Icons.privacy_tip_outlined, size: 16, color: AppTheme.burgundy),
+                  label: const Text('Privacy Policy', style: TextStyle(color: AppTheme.burgundy, fontSize: 13, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.rose),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
             ),
             const Spacer(flex: 2),
           ],

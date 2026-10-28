@@ -1552,6 +1552,23 @@ app.post('/api/mat/profiles', authenticateUser, async (req, res) => {
       return res.status(400).json({ success: false, message: 'gender must be Groom or Bride.' });
     }
 
+    // Strict 18+ matrimonial legal age enforcement
+    const dobDate = new Date(b.dateOfBirth);
+    if (!isNaN(dobDate.getTime())) {
+      const today = new Date();
+      let calculatedAge = today.getFullYear() - dobDate.getFullYear();
+      const m = today.getMonth() - dobDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dobDate.getDate())) {
+        calculatedAge--;
+      }
+      if (calculatedAge < 18) {
+        return res.status(400).json({
+          success: false,
+          message: 'You must be at least 18 years of age to register for matrimony.'
+        });
+      }
+    }
+
     // Check if user already has a profile
     const [existing] = await pool.query('SELECT * FROM mat_profiles WHERE user_id = ?', [userId]);
 
@@ -2474,7 +2491,7 @@ app.get('/api/mat/visitors', authenticateUser, async (req, res) => {
         success: false,
         requiresSubscription: true,
         upgradePrice: UNLIMITED_SWIPE_PLAN_PRICE,
-        message: 'Profile visitors are accessible only for members with the ₹499 Unlimited Swipe Plan.'
+        message: 'Profile visitors are accessible only for members with the ₹499 Premium Membership.'
       });
     }
 
@@ -2542,7 +2559,7 @@ app.get('/api/mat/analytics/profile', authenticateUser, async (req, res) => {
         success: false,
         requiresSubscription: true,
         upgradePrice: UNLIMITED_SWIPE_PLAN_PRICE,
-        message: 'Profile visitor analytics are accessible only for members with the ₹499 Unlimited Swipe Plan.'
+        message: 'Profile visitor analytics are accessible only for members with the ₹499 Premium Membership.'
       });
     }
 
@@ -3402,7 +3419,7 @@ app.get('/api/mat/subscriptions/swipe-status', authenticateUser, async (req, res
     );
 
     const isUnlimited = subs.length > 0;
-    const planName = isUnlimited ? 'Unlimited Swipe Plan' : 'Free Plan';
+    const planName = isUnlimited ? 'Premium Membership' : 'Free Plan';
 
     // 2. Query today's usage across all feeds combined in client's local day
     const [usage] = await pool.query(
@@ -3578,8 +3595,8 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
       gateway = 'google_pay', // 'google_pay', 'google_play', 'app_store', 'apple_iap', 'verified_in_app'
       purchaseToken,
       platform = 'android', // 'android' | 'ios'
-      packageName = 'matrimonyer.matrimony.com',
-      productId = 'matrimonyer_unlimited_swipes_499'
+      packageName = 'matrimonyapp.matrimonyer.com',
+      productId = 'premium_yearly_499'
     } = req.body;
 
     const clientIp = getClientIp(req);
@@ -3658,14 +3675,14 @@ app.post('/api/mat/subscriptions/verify-purchase', authenticateUser, async (req,
     await conn.commit();
 
     const successMessage = isApplePlatform
-      ? 'Unlimited Swipe Plan activated successfully via Apple In-App Purchase! Enjoy unlimited profile swipes worldwide.'
-      : 'Unlimited Swipe Plan activated successfully via Google Pay! Enjoy unlimited profile swipes worldwide.';
+      ? 'Premium Membership activated successfully via Apple In-App Purchase! Enjoy unlimited swipes, visitor insights, and direct contacts.'
+      : 'Premium Membership activated successfully via Google Play! Enjoy unlimited swipes, visitor insights, and direct contacts.';
 
     return res.status(200).json({
       success: true,
       message: successMessage,
       isUnlimited: true,
-      planName: 'Unlimited Swipe Plan',
+      planName: 'Premium Membership',
       planPrice: verifiedAmount,
       currency,
       gateway: effectiveGateway,
